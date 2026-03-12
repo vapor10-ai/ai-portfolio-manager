@@ -1,8 +1,12 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const yahooFinance = require('yahoo-finance2').default;
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import yahooFinance from 'yahoo-finance2';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 // Claude API via direct HTTP (no SDK needed)
 async function callClaude(apiKey, messages, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
