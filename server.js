@@ -3,7 +3,10 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import yahooFinance from 'yahoo-finance2';
+import yf from 'yahoo-finance2';
+
+// Handle different export formats
+const yahooFinance = yf.default || yf;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +31,16 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── Yahoo Finance suppression for common warnings ───
+// ─── Debug endpoint ───
+app.get('/api/debug', (req, res) => {
+  res.json({
+    type: typeof yahooFinance,
+    methods: Object.keys(yahooFinance),
+    hasQuote: typeof yahooFinance.quote,
+    hasSearch: typeof yahooFinance.search,
+    hasChart: typeof yahooFinance.chart,
+  });
+});
 
 // ─── Cache layer (in-memory, 30s TTL for quotes, 5min for others) ───
 const cache = new Map();
