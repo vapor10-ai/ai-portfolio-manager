@@ -2,6 +2,7 @@
   "name": "ai-portfolio-manager",
   "version": "2.0.0",
   "description": "AI-Powered Stock Portfolio Manager with Claude AI & Real-Time Data",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
