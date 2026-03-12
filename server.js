@@ -3,13 +3,13 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import yf from 'yahoo-finance2';
-
-// Handle different export formats
-const yahooFinance = yf.default || yf;
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Dynamic import to handle yahoo-finance2 ESM export correctly
+let yahooFinance;
+const yfModule = await import('yahoo-finance2');
+yahooFinance = yfModule.default?.default || yfModule.default || yfModule;
 // Claude API via direct HTTP (no SDK needed)
 async function callClaude(apiKey, messages, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -32,13 +32,17 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Debug endpoint ───
-app.get('/api/debug', (req, res) => {
+app.get('/api/debug', async (req, res) => {
+  const mod = await import('yahoo-finance2');
   res.json({
-    type: typeof yahooFinance,
-    methods: Object.keys(yahooFinance),
+    defaultType: typeof mod.default,
+    defaultKeys: mod.default ? Object.keys(mod.default) : [],
+    nestedDefault: mod.default?.default ? Object.keys(mod.default.default) : [],
+    topKeys: Object.keys(mod),
+    yfType: typeof yahooFinance,
+    yfKeys: Object.keys(yahooFinance),
     hasQuote: typeof yahooFinance.quote,
     hasSearch: typeof yahooFinance.search,
-    hasChart: typeof yahooFinance.chart,
   });
 });
 
