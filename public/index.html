@@ -157,15 +157,15 @@ const SearchModal=({onClose,onSelect})=>{
 
   return(
     <div className="mo mo2" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
-        <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center',flexShrink:0}}>
+      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh',display:'flex',flexDirection:'column',overflowY:'hidden'}}>
+        <div style={{display:'flex',gap:10,marginBottom:12,alignItems:'center',flexShrink:0,position:'sticky',top:0,zIndex:2,background:'var(--card)',paddingBottom:4}}>
           <div style={{flex:1,position:'relative'}}>
-            <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. Apple, AAPL)" style={{paddingLeft:40,fontSize:16}}/>
+            <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. AAPL)" style={{paddingLeft:40,fontSize:16}}/>
             <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--t3)'}}><I n="search" s={18}/></div>
           </div>
           <button onClick={onClose} style={{background:'none',color:'var(--t2)',padding:8,minWidth:40,minHeight:40}}><I n="x" s={22}/></button>
         </div>
-        <div style={{flex:1,overflowY:'auto',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch',minHeight:0}}>
+        <div style={{flex:1,overflowY:'auto',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch',minHeight:0,paddingBottom:20}}>
         {loading && <div style={{textAlign:'center',padding:20}}><div className="sp"/></div>}
         {results.length > 0 ? (
           <div>{results.map(r=>(
@@ -198,8 +198,24 @@ const SearchModal=({onClose,onSelect})=>{
   );
 };
 
+// ─── Error Boundary ───
+class ErrorBound extends React.Component{
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e.message||'Something went wrong'};}
+  render(){
+    if(this.state.err)return React.createElement('div',{className:'mo',onClick:this.props.onClose},
+      React.createElement('div',{className:'mc fi',onClick:e=>e.stopPropagation(),style:{textAlign:'center',padding:40}},
+        React.createElement('p',{style:{color:'var(--red)',fontSize:16,fontWeight:700,marginBottom:8}},'Failed to load stock'),
+        React.createElement('p',{style:{color:'var(--t3)',fontSize:12,marginBottom:16}},this.state.err),
+        React.createElement('button',{className:'bs',onClick:this.props.onClose},'Close')
+      )
+    );
+    return this.props.children;
+  }
+}
+
 // ─── Stock Detail Modal ───
-const StockDetail=({symbol,onClose})=>{
+const StockDetailInner=({symbol,onClose})=>{
   useBodyScrollLock();
   const [quote,setQuote]=useState(null);
   const [fin,setFin]=useState(null);
@@ -249,17 +265,17 @@ const StockDetail=({symbol,onClose})=>{
 
         <div style={{display:'flex',alignItems:'baseline',gap:12,margin:'10px 0 4px'}}>
           <span style={{fontSize:30,fontWeight:700}}>{F.$(quote.price)}</span>
-          <span style={{fontSize:14,fontWeight:600,color:quote.change>=0?'var(--grn)':'var(--red)'}}>
-            {quote.change>=0?'+':''}{quote.change?.toFixed(2)} ({F.pct(quote.changePct)})
-          </span>
+          {quote.change!=null&&<span style={{fontSize:14,fontWeight:600,color:(quote.change||0)>=0?'var(--grn)':'var(--red)'}}>
+            {(quote.change||0)>=0?'+':''}{(quote.change||0).toFixed(2)} ({F.pct(quote.changePct)})
+          </span>}
         </div>
         <div style={{fontSize:11,color:'var(--t3)',marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
-          <span className="live"/> {quote.marketState==='REGULAR'?'Market Open':'Market Closed'} · {quote.exchange}
+          <span className="live"/> {quote.marketState==='REGULAR'?'Market Open':'Market Closed'}{quote.exchange?' · '+quote.exchange:''}
         </div>
 
         {/* Price Chart */}
         {hist && hist.length > 0 && <div className="c">
-          <LineChart data={hist.map(h=>h.close)} labels={hist.map(h=>new Date(h.date).toLocaleDateString())} color={quote.change>=0?'#00d4aa':'#ff4757'} height={140}/>
+          <LineChart data={hist.map(h=>h.close)} labels={hist.map(h=>{try{return new Date(h.date).toLocaleDateString()}catch{return''}})} color={(quote.change||0)>=0?'#00d4aa':'#ff4757'} height={140}/>
           <div style={{display:'flex',gap:4,marginTop:8,justifyContent:'center'}}>
             {['1d','5d','1mo','3mo','6mo','1y'].map(r=>
               <button key={r} onClick={()=>setRange(r)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,fontWeight:600,background:range===r?'var(--acc)':'var(--hover)',color:range===r?'#000':'var(--t2)'}}>{r}</button>
@@ -338,6 +354,7 @@ const StockDetail=({symbol,onClose})=>{
     </div>
   );
 };
+const StockDetail=({symbol,onClose})=>React.createElement(ErrorBound,{onClose},React.createElement(StockDetailInner,{symbol,onClose}));
 
 // ─── Dashboard ───
 const Dashboard=({pos,wl,budget,onNav,onStock})=>{
