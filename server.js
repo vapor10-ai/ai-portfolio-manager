@@ -9,7 +9,9 @@ const __dirname = path.dirname(__filename);
 // Dynamic import to handle yahoo-finance2 ESM export correctly
 let yahooFinance;
 const yfModule = await import('yahoo-finance2');
-yahooFinance = yfModule.default?.default || yfModule.default || yfModule;
+const yfExport = yfModule.default || yfModule;
+// If it's a factory function, call it; otherwise use directly
+yahooFinance = typeof yfExport === 'function' ? yfExport() : yfExport;
 // Claude API via direct HTTP (no SDK needed)
 async function callClaude(apiKey, messages, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -34,13 +36,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ─── Debug endpoint ───
 app.get('/api/debug', async (req, res) => {
   const mod = await import('yahoo-finance2');
+  const fn = mod.default || mod;
+  const called = typeof fn === 'function' ? fn() : fn;
+  const proto = called ? Object.getOwnPropertyNames(Object.getPrototypeOf(called)).filter(k => k !== 'constructor') : [];
   res.json({
-    defaultType: typeof mod.default,
-    defaultKeys: mod.default ? Object.keys(mod.default) : [],
-    nestedDefault: mod.default?.default ? Object.keys(mod.default.default) : [],
-    topKeys: Object.keys(mod),
+    calledType: typeof called,
+    calledKeys: called ? Object.keys(called) : [],
+    protoMethods: proto,
     yfType: typeof yahooFinance,
     yfKeys: Object.keys(yahooFinance),
+    yfProto: Object.getOwnPropertyNames(Object.getPrototypeOf(yahooFinance)).filter(k => k !== 'constructor'),
     hasQuote: typeof yahooFinance.quote,
     hasSearch: typeof yahooFinance.search,
   });
