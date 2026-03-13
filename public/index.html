@@ -402,8 +402,8 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
 
       {/* Quick nav */}
       <div className="g2" style={{marginBottom:12}}>
-        <button className="c" onClick={()=>onNav('portfolio')} style={{textAlign:'center',marginBottom:0}}><I n="briefcase" s={22} c="var(--acc)"/><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{pos.length} Holdings</div></button>
-        <button className="c" onClick={()=>onNav('watchlist')} style={{textAlign:'center',marginBottom:0}}><I n="eye" s={22} c="var(--blu)"/><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{wl.reduce((s,w)=>s+w.items.length,0)} Watching</div></button>
+        <button className="c" onClick={()=>onNav('portfolio')} style={{textAlign:'center',marginBottom:0,color:'var(--t1)'}}><I n="briefcase" s={22} c="var(--acc)"/><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{pos.length} Holdings</div></button>
+        <button className="c" onClick={()=>onNav('watchlist')} style={{textAlign:'center',marginBottom:0,color:'var(--t1)'}}><I n="eye" s={22} c="var(--blu)"/><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{wl.reduce((s,w)=>s+w.items.length,0)} Watching</div></button>
       </div>
 
       {/* Sectors */}
