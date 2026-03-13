@@ -36,7 +36,6 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 .mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--sab));width:100%;max-width:600px;max-height:88vh;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .mc.fi{overflow:hidden !important;display:flex;flex-direction:column;max-height:85vh;max-height:85dvh}
 @media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh;padding-bottom:20px}}
-html.modal-open,body.modal-open{overflow:hidden;height:100%}
 .pb{height:6px;background:var(--hover);border-radius:3px;overflow:hidden}
 .pf{height:100%;border-radius:3px;transition:width .5s ease}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -140,11 +139,19 @@ const Doughnut=({data,labels,colors,size=160})=>{
 // ─── Body Scroll Lock ───
 function useBodyScrollLock(){
   useEffect(()=>{
-    document.documentElement.classList.add('modal-open');
-    document.body.classList.add('modal-open');
+    const scrollY=window.scrollY;
+    document.body.style.position='fixed';
+    document.body.style.top=`-${scrollY}px`;
+    document.body.style.left='0';
+    document.body.style.right='0';
+    document.body.style.overflow='hidden';
     return()=>{
-      document.documentElement.classList.remove('modal-open');
-      document.body.classList.remove('modal-open');
+      document.body.style.position='';
+      document.body.style.top='';
+      document.body.style.left='';
+      document.body.style.right='';
+      document.body.style.overflow='';
+      window.scrollTo(0,scrollY);
     };
   },[]);
 }
@@ -530,6 +537,69 @@ const StockDetailInner=({symbol,onClose})=>{
 const StockDetail=({symbol,onClose})=>React.createElement(ErrorBound,{onClose},React.createElement(StockDetailInner,{symbol,onClose}));
 
 // ─── Dashboard ───
+// ─── Market Movers ───
+const MarketMovers=({onStock})=>{
+  const [data,setData]=useState({gainers:[],losers:[],active:[]});
+  const [tab,setTab]=useState('gainers');
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      try{
+        const [g,l,a]=await Promise.all([
+          api.get('/api/screener/gainers'),
+          api.get('/api/screener/losers'),
+          api.get('/api/screener/active'),
+        ]);
+        setData({gainers:g.slice(0,8),losers:l.slice(0,8),active:a.slice(0,8)});
+      }catch{}
+      setLoading(false);
+    };
+    load();
+    const iv=setInterval(load,30000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  const list=data[tab]||[];
+  const tabs=[
+    {id:'gainers',label:'Gainers',icon:'▲',color:'var(--grn)'},
+    {id:'losers',label:'Losers',icon:'▼',color:'var(--red)'},
+    {id:'active',label:'Most Active',icon:'⚡',color:'var(--yel)'},
+  ];
+
+  return(
+    <div className="c">
+      <h4 style={{fontSize:14,fontWeight:600,marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
+        <I n="trend" s={16} c="var(--acc)"/> Market Movers
+      </h4>
+      <div style={{display:'flex',gap:4,marginBottom:10}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{
+            flex:1,padding:'6px 0',borderRadius:8,fontSize:11,fontWeight:700,
+            background:tab===t.id?'var(--hover)':'transparent',color:tab===t.id?t.color:'var(--t3)',
+            border:tab===t.id?`1px solid ${t.color}`:'1px solid transparent',transition:'all .2s'
+          }}>{t.icon} {t.label}</button>
+        ))}
+      </div>
+      {loading?<div style={{textAlign:'center',padding:16}}><div className="sp"/></div>:
+        list.map(s=>(
+          <div key={s.symbol} className="sr" onClick={()=>onStock(s.symbol)} style={{padding:'6px 0'}}>
+            <div style={{flex:1}}>
+              <span style={{fontWeight:700,fontSize:13}}>{s.symbol}</span>
+              <span style={{fontSize:11,color:'var(--t3)',marginLeft:6}}>{s.name?.slice(0,20)}</span>
+            </div>
+            <div style={{textAlign:'right',display:'flex',alignItems:'center',gap:10}}>
+              <span style={{fontWeight:600,fontSize:13}}>{F.$(s.price)}</span>
+              <span style={{fontWeight:600,fontSize:12,color:(s.changePct||0)>=0?'var(--grn)':'var(--red)',minWidth:55,textAlign:'right'}}>{F.pct(s.changePct)}</span>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+};
+
 const SECTORS=[
   {label:'All',query:''},
   {label:'Tech',query:'technology stocks'},
@@ -657,6 +727,9 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
           </div>);
         })}
       </div>}
+
+      {/* Market Movers */}
+      <MarketMovers onStock={onStock}/>
 
       {/* Market News */}
       <div className="c">
