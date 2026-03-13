@@ -91,7 +91,7 @@ const SEC={'AAPL':'Tech','MSFT':'Tech','GOOGL':'Tech','AMZN':'Cons.Cyc','NVDA':'
 const SCOL={'Tech':'#42a5f5','Finance':'#ab47bc','Health':'#66bb6a','Cons.Cyc':'#ff7043','Cons.Def':'#ffa726','Comms':'#ec407a','Energy':'#ef5350','Industrial':'#26a69a','Other':'#78909c'};
 
 // ─── SVG Icons ───
-const I=({n,s=20,c='currentColor'})=>{const p={home:<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>,briefcase:<><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></>,eye:<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,shield:<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,scan:<><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16" r="0.5"/></>,settings:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,plus:<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,x:<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,trash:<><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></>,search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,spark:<path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>,moon:<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>,sun:<><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>,alert:<><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,trend:<><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>};
+const I=({n,s=20,c='currentColor'})=>{const p={home:<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>,briefcase:<><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></>,eye:<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,shield:<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,scan:<><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16" r="0.5"/></>,settings:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></>,plus:<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,x:<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,trash:<><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></>,search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,spark:<path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>,moon:<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>,sun:<><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>,alert:<><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,trend:<><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>,news:<><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></>,link:<><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></>};
 return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{p[n]}</svg>;};
 
 // ─── Chart ───
@@ -105,7 +105,7 @@ const LineChart=({data,labels,color='#00d4aa',height=160})=>{
     if(chart.current)chart.current.destroy();
     if(!ref.current||!data?.length)return;
     const tc=getTooltipColors();
-    chart.current=new Chart(ref.current,{type:'line',data:{labels,datasets:[{data,borderColor:color,backgroundColor:color+'20',fill:true,tension:.4,pointRadius:0,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,...tc,borderWidth:1,cornerRadius:8}},scales:{x:{display:false},y:{display:false}},interaction:{mode:'nearest',intersect:false}}});
+    chart.current=new Chart(ref.current,{type:'line',data:{labels,datasets:[{data,borderColor:color,backgroundColor:color+'15',fill:true,tension:.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:color,pointHoverBorderColor:color,pointHoverBorderWidth:2,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,...tc,borderWidth:1,cornerRadius:10,displayColors:false,padding:{x:12,y:8},titleFont:{size:11,weight:'normal'},bodyFont:{size:14,weight:'bold'},callbacks:{label:ctx=>{const v=ctx.parsed.y;return v!=null?'$'+v.toFixed(2):''}}}},scales:{x:{display:false},y:{display:false}},interaction:{mode:'nearest',intersect:false}}});
     return()=>{if(chart.current)chart.current.destroy()};
   },[data,labels,color]);
   return <div style={{height}}><canvas ref={ref}/></div>;
@@ -116,7 +116,7 @@ const Doughnut=({data,labels,colors,size=160})=>{
     if(chart.current)chart.current.destroy();
     if(!ref.current||!data?.length)return;
     const tc=getTooltipColors();
-    chart.current=new Chart(ref.current,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:true,cutout:'68%',plugins:{legend:{display:false},tooltip:{...tc,borderWidth:1,cornerRadius:8,callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed.toFixed(1)}%`}}}}});
+    chart.current=new Chart(ref.current,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:true,cutout:'68%',plugins:{legend:{display:false},tooltip:{...tc,borderWidth:1,cornerRadius:10,displayColors:false,padding:{x:12,y:8},callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed.toFixed(1)}%`}}}}});
     return()=>{if(chart.current)chart.current.destroy()};
   },[data,labels,colors]);
   return <canvas ref={ref} style={{maxWidth:size,maxHeight:size,margin:'0 auto',display:'block'}}/>;
@@ -161,6 +161,47 @@ function useModalTouch(overlayRef){
     return()=>el.removeEventListener('touchmove',handler);
   },[]);
 }
+
+// ─── Time Ago ───
+function timeAgo(dateStr){
+  if(!dateStr)return'';
+  const s=Math.floor((Date.now()-new Date(dateStr).getTime())/1000);
+  if(s<60)return'now';if(s<3600)return Math.floor(s/60)+'m ago';
+  if(s<86400)return Math.floor(s/3600)+'h ago';
+  if(s<604800)return Math.floor(s/86400)+'d ago';
+  return new Date(dateStr).toLocaleDateString();
+}
+
+// ─── News Card ───
+const NewsCard=({item})=>(
+  <a href={item.link} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{display:'flex',gap:12,padding:'12px 0',borderBottom:'1px solid var(--brd)',textDecoration:'none',color:'inherit',cursor:'pointer'}}>
+    {item.thumbnail&&<img src={item.thumbnail} alt="" style={{width:72,height:54,objectFit:'cover',borderRadius:8,flexShrink:0,background:'var(--hover)'}}
+      onError={e=>{e.target.style.display='none'}}/>}
+    <div style={{flex:1,minWidth:0}}>
+      <p style={{fontSize:13,fontWeight:600,lineHeight:1.4,marginBottom:4,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{item.title}</p>
+      <div style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--t3)'}}>
+        <span>{item.publisher}</span>
+        <span style={{opacity:.5}}>·</span>
+        <span>{timeAgo(item.publishedAt)}</span>
+        {item.relatedTickers?.length>0&&<><span style={{opacity:.5}}>·</span>{item.relatedTickers.slice(0,3).map(t=><span key={t} style={{color:'var(--acc)',fontWeight:600}}>{t}</span>)}</>}
+      </div>
+    </div>
+  </a>
+);
+
+// ─── News Feed ───
+const NewsFeed=({symbol})=>{
+  const [news,setNews]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    setLoading(true);
+    const url=symbol?`/api/news/${symbol}`:'/api/news';
+    api.get(url).then(n=>{setNews(n);setLoading(false);}).catch(()=>setLoading(false));
+  },[symbol]);
+  if(loading)return <div style={{textAlign:'center',padding:20}}><div className="sp"/></div>;
+  if(!news.length)return <p style={{fontSize:12,color:'var(--t3)',textAlign:'center',padding:16}}>No news available</p>;
+  return <div>{news.map((n,i)=><NewsCard key={i} item={n}/>)}</div>;
+};
 
 // ─── Ticker Search Modal ───
 const SearchModal=({onClose,onSelect})=>{
@@ -381,6 +422,13 @@ const StockDetailInner=({symbol,onClose})=>{
           </>}
           {!ai && <p style={{fontSize:12,color:'var(--t3)'}}>Get AI-powered analysis from Claude</p>}
         </div>
+        {/* Stock News */}
+        <div className="c">
+          <h4 style={{fontSize:14,fontWeight:600,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+            <I n="news" s={16} c="var(--blu)"/> Latest News
+          </h4>
+          <NewsFeed symbol={symbol}/>
+        </div>
         <p style={{fontSize:10,color:'var(--t3)',textAlign:'center',marginTop:8}}>Not financial advice. Always do your own research.</p>
         </>}
       </div>
@@ -492,6 +540,14 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
           </div>);
         })}
       </div>}
+
+      {/* Market News */}
+      <div className="c">
+        <h4 style={{fontSize:14,fontWeight:600,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+          <I n="news" s={16} c="var(--blu)"/> Market News
+        </h4>
+        <NewsFeed/>
+      </div>
     </div>
   );
 };

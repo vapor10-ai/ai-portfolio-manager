@@ -63,6 +63,18 @@ class YahooClient {
     return data?.quotes || [];
   }
 
+  async news(query, count = 15) {
+    const data = await this.fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=0&newsCount=${count}`);
+    return (data?.news || []).map(n => ({
+      title: n.title,
+      link: n.link,
+      publisher: n.publisher,
+      publishedAt: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString() : null,
+      thumbnail: n.thumbnail?.resolutions?.[0]?.url || null,
+      relatedTickers: n.relatedTickers || [],
+    }));
+  }
+
   async chart(symbol, range = '1mo', interval = '1d') {
     const data = await this.fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`);
     const result = data?.chart?.result?.[0];
@@ -369,6 +381,28 @@ app.get('/api/history/:symbol', async (req, res) => {
   } catch (e) {
     console.error('History error:', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── News ───
+app.get('/api/news/:symbol', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const news = await cached(`news_${symbol}`, 300000, () => yahoo.news(symbol, 10));
+    res.json(news);
+  } catch (e) {
+    console.error('News error:', e.message);
+    res.json([]);
+  }
+});
+
+app.get('/api/news', async (req, res) => {
+  try {
+    const news = await cached('market_news', 300000, () => yahoo.news('stock market today', 20));
+    res.json(news);
+  } catch (e) {
+    console.error('Market news error:', e.message);
+    res.json([]);
   }
 });
 
