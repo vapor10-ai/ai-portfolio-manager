@@ -33,10 +33,10 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 .sp{width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 .mo{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:1000;padding:0;backdrop-filter:blur(4px)}
 .mo.mo2{z-index:1010}
-.mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--sab));width:100%;max-width:600px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.mc.fi{overflow:hidden !important;display:flex;flex-direction:column}
+.mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--sab));width:100%;max-width:600px;max-height:88vh;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.mc.fi{overflow:hidden !important;display:flex;flex-direction:column;max-height:85vh;max-height:85dvh}
 @media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh;padding-bottom:20px}}
-html.modal-open,body.modal-open{overflow:hidden;height:100%;position:fixed;width:100%}
+html.modal-open,body.modal-open{overflow:hidden;height:100%}
 .pb{height:6px;background:var(--hover);border-radius:3px;overflow:hidden}
 .pf{height:100%;border-radius:3px;transition:width .5s ease}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -140,15 +140,11 @@ const Doughnut=({data,labels,colors,size=160})=>{
 // ─── Body Scroll Lock ───
 function useBodyScrollLock(){
   useEffect(()=>{
-    const scrollY=window.scrollY;
     document.documentElement.classList.add('modal-open');
     document.body.classList.add('modal-open');
-    document.body.style.top=`-${scrollY}px`;
     return()=>{
       document.documentElement.classList.remove('modal-open');
       document.body.classList.remove('modal-open');
-      document.body.style.top='';
-      window.scrollTo(0,scrollY);
     };
   },[]);
 }
@@ -206,9 +202,19 @@ const SearchModal=({onClose,onSelect})=>{
   const [loading,setLoading]=useState(false);
   const [trending,setTrending]=useState([]);
   const [searchErr,setSearchErr]=useState(null);
+  const [vpHeight,setVpHeight]=useState(window.visualViewport?.height||window.innerHeight);
   const timer=useRef(null);
 
   useEffect(()=>{api.get('/api/trending').then(setTrending).catch(()=>{});},[]);
+
+  // Track visual viewport (adjusts when iOS keyboard opens)
+  useEffect(()=>{
+    const vp=window.visualViewport;
+    if(!vp)return;
+    const onResize=()=>setVpHeight(vp.height);
+    vp.addEventListener('resize',onResize);
+    return()=>vp.removeEventListener('resize',onResize);
+  },[]);
 
   useEffect(()=>{
     if(timer.current)clearTimeout(timer.current);
@@ -221,8 +227,8 @@ const SearchModal=({onClose,onSelect})=>{
   },[q]);
 
   return(
-    <div className="mo mo2" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'85vh'}}>
+    <div className="mo mo2" onClick={onClose} style={{alignItems:'flex-end'}}>
+      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:vpHeight*0.85}}>
         <div style={{display:'flex',gap:10,marginBottom:12,alignItems:'center',flexShrink:0}}>
           <div style={{flex:1,position:'relative'}}>
             <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. AAPL)" style={{paddingLeft:40,fontSize:16}}/>
