@@ -35,7 +35,10 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 .mo.mo2{z-index:1010}
 .mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--sab));width:100%;max-width:600px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 @media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh;padding-bottom:20px}}
-body.modal-open{overflow:hidden;position:fixed;width:100%;touch-action:none}
+body.modal-open{overflow:hidden}
+.mo{touch-action:none}
+.mc{touch-action:pan-y}
+.mc *{touch-action:pan-y}
 .pb{height:6px;background:var(--hover);border-radius:3px;overflow:hidden}
 .pf{height:100%;border-radius:3px;transition:width .5s ease}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -123,19 +126,47 @@ const Doughnut=({data,labels,colors,size=160})=>{
 function useBodyScrollLock(){
   useEffect(()=>{
     const sy=window.scrollY;
-    document.body.classList.add('modal-open');
+    document.body.style.overflow='hidden';
+    document.body.style.position='fixed';
     document.body.style.top=`-${sy}px`;
+    document.body.style.left='0';
+    document.body.style.right='0';
+    document.body.style.width='100%';
     return()=>{
-      document.body.classList.remove('modal-open');
+      document.body.style.overflow='';
+      document.body.style.position='';
       document.body.style.top='';
+      document.body.style.left='';
+      document.body.style.right='';
+      document.body.style.width='';
       window.scrollTo(0,sy);
     };
+  },[]);
+}
+// Prevent touch scroll on modal overlay, allow inside .mc
+function useModalTouch(overlayRef){
+  useEffect(()=>{
+    const el=overlayRef.current;if(!el)return;
+    const handler=(e)=>{
+      // Allow scroll inside .mc and its children
+      let target=e.target;
+      while(target&&target!==el){
+        if(target.classList&&target.classList.contains('mc'))return;
+        if(target.scrollHeight>target.clientHeight&&target.style.overflowY==='auto')return;
+        target=target.parentElement;
+      }
+      e.preventDefault();
+    };
+    el.addEventListener('touchmove',handler,{passive:false});
+    return()=>el.removeEventListener('touchmove',handler);
   },[]);
 }
 
 // ─── Ticker Search Modal ───
 const SearchModal=({onClose,onSelect})=>{
   useBodyScrollLock();
+  const overlayRef=useRef(null);
+  useModalTouch(overlayRef);
   const [q,setQ]=useState('');
   const [results,setResults]=useState([]);
   const [loading,setLoading]=useState(false);
@@ -156,16 +187,16 @@ const SearchModal=({onClose,onSelect})=>{
   },[q]);
 
   return(
-    <div className="mo mo2" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh',display:'flex',flexDirection:'column',overflowY:'hidden'}}>
-        <div style={{display:'flex',gap:10,marginBottom:12,alignItems:'center',flexShrink:0,position:'sticky',top:0,zIndex:2,background:'var(--card)',paddingBottom:4}}>
+    <div ref={overlayRef} className="mo mo2" onClick={onClose} style={{touchAction:'none'}}>
+      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'85vh',display:'flex',flexDirection:'column',overflow:'hidden',touchAction:'pan-y'}}>
+        <div style={{display:'flex',gap:10,marginBottom:12,alignItems:'center',flexShrink:0}}>
           <div style={{flex:1,position:'relative'}}>
             <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. AAPL)" style={{paddingLeft:40,fontSize:16}}/>
             <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--t3)'}}><I n="search" s={18}/></div>
           </div>
           <button onClick={onClose} style={{background:'none',color:'var(--t2)',padding:8,minWidth:40,minHeight:40}}><I n="x" s={22}/></button>
         </div>
-        <div style={{flex:1,overflowY:'auto',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch',minHeight:0,paddingBottom:20}}>
+        <div style={{flex:1,overflowY:'auto',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch',minHeight:0,paddingBottom:20,touchAction:'pan-y'}}>
         {loading && <div style={{textAlign:'center',padding:20}}><div className="sp"/></div>}
         {results.length > 0 ? (
           <div>{results.map(r=>(
@@ -217,6 +248,8 @@ class ErrorBound extends React.Component{
 // ─── Stock Detail Modal ───
 const StockDetailInner=({symbol,onClose})=>{
   useBodyScrollLock();
+  const overlayRef=useRef(null);
+  useModalTouch(overlayRef);
   const [quote,setQuote]=useState(null);
   const [fin,setFin]=useState(null);
   const [hist,setHist]=useState(null);
@@ -254,8 +287,8 @@ const StockDetailInner=({symbol,onClose})=>{
   const badgeClass=(v)=>v==='Bullish'||v==='Undervalued'||v==='Low'||v==='Strong Buy'||v==='Buy'?'bg':v==='Bearish'||v==='Overvalued'||v==='High'||v==='Avoid'?'br':'by';
 
   return(
-    <div className="mo" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh'}}>
+    <div ref={overlayRef} className="mo" onClick={onClose} style={{touchAction:'none'}}>
+      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'90vh',touchAction:'pan-y'}}>
         {error ? <div style={{textAlign:'center',padding:40}}><I n="alert" s={32} c="var(--red)"/><p style={{color:'var(--red)',marginTop:8,fontSize:14,fontWeight:600}}>Failed to load {symbol}</p><p style={{color:'var(--t3)',fontSize:12,marginTop:4}}>{error}</p><button className="bs" onClick={()=>{setError(null);setLoadTimeout(false);api.get(`/api/quote/${symbol}`).then(q=>{if(!q||q.price==null){setError('No data available for '+symbol);return;}setQuote(q);}).catch(e=>setError(e.message));}} style={{marginTop:12}}>Retry</button><button className="bs" onClick={onClose} style={{marginTop:8,marginLeft:8}}>Close</button></div>
         : !quote ? <div style={{textAlign:'center',padding:40}}><div className="sp"/><p style={{color:'var(--t3)',fontSize:12,marginTop:12}}>Loading {symbol}...</p>{loadTimeout&&<><p style={{color:'var(--yel)',fontSize:12,marginTop:8}}>Taking longer than expected...</p><button className="bs" onClick={onClose} style={{marginTop:8}}>Close</button></>}</div> : <>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:4}}>
