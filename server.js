@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 const yfModule = await import('yahoo-finance2');
 const YahooFinance = yfModule.default || yfModule;
 const yahooFinance = new YahooFinance();
+
 // Claude API via direct HTTP (no SDK needed)
 async function callClaude(apiKey, messages, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -31,18 +32,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── Debug endpoint ───
-app.get('/api/debug', async (req, res) => {
-  res.json({
-    yfType: typeof yahooFinance,
-    yfKeys: Object.keys(yahooFinance),
-    yfProto: Object.getOwnPropertyNames(Object.getPrototypeOf(yahooFinance)).filter(k => k !== 'constructor'),
-    hasQuote: typeof yahooFinance.quote,
-    hasSearch: typeof yahooFinance.search,
-  });
-});
-
-// ─── Cache layer (in-memory, 30s TTL for quotes, 5min for others) ───
+// ─── Cache layer ───
 const cache = new Map();
 function cached(key, ttlMs, fetcher) {
   const entry = cache.get(key);
@@ -53,7 +43,7 @@ function cached(key, ttlMs, fetcher) {
   });
 }
 
-// ─── Helper: safe Yahoo call ───
+// ─── Helper: safe Yahoo quote ───
 async function safeQuote(symbol) {
   try {
     const q = await yahooFinance.quote(symbol);
@@ -62,6 +52,15 @@ async function safeQuote(symbol) {
     console.error(`Quote error for ${symbol}:`, e.message);
     return null;
   }
+}
+
+// ─── Helper: direct Yahoo Finance API call (for methods not in this version) ───
+async function yahooFetch(url) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
+  if (!res.ok) throw new Error(`Yahoo API error ${res.status}`);
+  return res.json();
 }
 
 // ═══════════════════════════════════════════════════
@@ -98,7 +97,7 @@ app.get('/api/quote/:symbol', async (req, res) => {
       avg200: data.twoHundredDayAverage,
       exchange: data.exchange,
       currency: data.currency,
-      marketState: data.marketState, // PRE, REGULAR, POST, CLOSED
+      marketState: data.marketState,
     });
   } catch (e) {
     console.error('Quote error:', e.message);
@@ -135,70 +134,87 @@ app.get('/api/quotes', async (req, res) => {
   }
 });
 
-// ─── GET /api/search?q=apple ─ Search tickers ───
+// ─── GET /api/search?q=apple ─ Search tickers using autoc ───
 app.get('/api/search', async (req, res) => {
   try {
     const query = req.query.q || '';
     if (query.length < 1) return res.json([]);
-    const results = await cached(`search_${query}`, 300000, () =>
-      yahooFinance.search(query, { quotesCount: 12, newsCount: 0 })
-    );
-    res.json((results.quotes || []).filter(q =>
+
+    // Try autoc method (available in this version)
+    if (typeof yahooFinance.autoc === 'function') {
+      const results = await cached(`search_${query}`, 300000, () =>
+        yahooFinance.autoc(query)
+      );
+      const items = results?.Result || results?.quotes || results || [];
+      return res.json(items.filter(q =>
+        !q.typeDisp || q.typeDisp === 'Equity' || q.typeDisp === 'ETF'
+      ).slice(0, 12).map(q => ({
+        symbol: q.symbol,
+        name: q.name || q.shortname || q.longname || q.symbol,
+        exchange: q.exchDisp || q.exchange || '',
+        type: q.typeDisp || q.quoteType || 'Equity',
+      })));
+    }
+
+    // Fallback: direct Yahoo search API
+    const data = await cached(`search_${query}`, 300000, async () => {
+      const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0`;
+      return yahooFetch(url);
+    });
+    res.json((data.quotes || []).filter(q =>
       q.quoteType === 'EQUITY' || q.quoteType === 'ETF'
     ).map(q => ({
       symbol: q.symbol,
       name: q.shortname || q.longname || q.symbol,
-      exchange: q.exchange,
-      type: q.quoteType,
+      exchange: q.exchDisp || q.exchange || '',
+      type: q.quoteType || 'Equity',
     })));
   } catch (e) {
+    console.error('Search error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// ─── GET /api/financials/:symbol ─ Detailed financials ───
+// ─── GET /api/financials/:symbol ─ Detailed financials via direct API ───
 app.get('/api/financials/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
-    const data = await cached(`fin_${symbol}`, 300000, () =>
-      yahooFinance.quoteSummary(symbol, {
-        modules: ['summaryDetail', 'defaultKeyStatistics', 'financialData', 'earningsTrend', 'industryTrend']
-      })
-    );
-    const sd = data.summaryDetail || {};
-    const ks = data.defaultKeyStatistics || {};
-    const fd = data.financialData || {};
+    const data = await cached(`fin_${symbol}`, 300000, async () => {
+      const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,defaultKeyStatistics,financialData`;
+      return yahooFetch(url);
+    });
+
+    const result = data?.quoteSummary?.result?.[0] || {};
+    const sd = result.summaryDetail || {};
+    const ks = result.defaultKeyStatistics || {};
+    const fd = result.financialData || {};
+
+    // Helper to extract raw value from Yahoo's nested format
+    const raw = (obj) => obj?.raw ?? obj?.fmt ?? obj ?? null;
 
     res.json({
       symbol,
-      pe: sd.trailingPE,
-      fwdPe: sd.forwardPE,
-      peg: ks.pegRatio,
-      priceToBook: sd.priceToBook,
-      priceToSales: ks.priceToSalesTrailing12Months,
-      divYield: sd.dividendYield ? sd.dividendYield * 100 : 0,
-      payoutRatio: sd.payoutRatio,
-      beta: sd.beta,
-      profitMargin: fd.profitMargins,
-      operatingMargin: fd.operatingMargins,
-      returnOnEquity: fd.returnOnEquity,
-      returnOnAssets: fd.returnOnAssets,
-      revenueGrowth: fd.revenueGrowth ? fd.revenueGrowth * 100 : null,
-      earningsGrowth: fd.earningsGrowth ? fd.earningsGrowth * 100 : null,
-      debtToEquity: fd.debtToEquity,
-      currentRatio: fd.currentRatio,
-      totalRevenue: fd.totalRevenue,
-      targetMeanPrice: fd.targetMeanPrice,
+      pe: raw(sd.trailingPE),
+      fwdPe: raw(sd.forwardPE),
+      peg: raw(ks.pegRatio),
+      priceToBook: raw(sd.priceToBook),
+      divYield: sd.dividendYield?.raw ? sd.dividendYield.raw * 100 : 0,
+      beta: raw(sd.beta),
+      profitMargin: raw(fd.profitMargins),
+      operatingMargin: raw(fd.operatingMargins),
+      returnOnEquity: raw(fd.returnOnEquity),
+      returnOnAssets: raw(fd.returnOnAssets),
+      revenueGrowth: fd.revenueGrowth?.raw ? fd.revenueGrowth.raw * 100 : null,
+      earningsGrowth: fd.earningsGrowth?.raw ? fd.earningsGrowth.raw * 100 : null,
+      debtToEquity: raw(fd.debtToEquity),
+      currentRatio: raw(fd.currentRatio),
+      totalRevenue: raw(fd.totalRevenue),
+      targetMeanPrice: raw(fd.targetMeanPrice),
       recommendationKey: fd.recommendationKey,
-      numberOfAnalysts: fd.numberOfAnalystOpinions,
-      totalCash: fd.totalCash,
-      totalDebt: fd.totalDebt,
-      freeCashflow: fd.freeCashflow,
-      earningsQuarterlyGrowth: ks.earningsQuarterlyGrowth ? ks.earningsQuarterlyGrowth * 100 : null,
-      revenueQuarterlyGrowth: ks.revenueQuarterlyGrowth ? ks.revenueQuarterlyGrowth * 100 : null,
-      shortPercentOfFloat: ks.shortPercentOfFloat ? ks.shortPercentOfFloat * 100 : null,
-      enterpriseToRevenue: ks.enterpriseToRevenue,
-      enterpriseToEbitda: ks.enterpriseToEbitda,
+      numberOfAnalysts: raw(fd.numberOfAnalystOpinions),
+      totalCash: raw(fd.totalCash),
+      totalDebt: raw(fd.totalDebt),
+      freeCashflow: raw(fd.freeCashflow),
     });
   } catch (e) {
     console.error('Financials error:', e.message);
@@ -206,29 +222,36 @@ app.get('/api/financials/:symbol', async (req, res) => {
   }
 });
 
-// ─── GET /api/history/:symbol?range=1mo ─ Price history ───
+// ─── GET /api/history/:symbol?range=1mo ─ Price history via direct API ───
 app.get('/api/history/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const range = req.query.range || '1mo';
     const intervalMap = { '1d': '5m', '5d': '15m', '1mo': '1d', '3mo': '1d', '6mo': '1d', '1y': '1wk', '5y': '1mo' };
     const interval = intervalMap[range] || '1d';
-    const periodMap = { '1d': 1, '5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '5y': 1825 };
-    const days = periodMap[range] || 30;
-    const period1 = new Date(Date.now() - days * 86400000);
 
-    const data = await cached(`hist_${symbol}_${range}`, 60000, () =>
-      yahooFinance.chart(symbol, { period1, interval })
-    );
+    const data = await cached(`hist_${symbol}_${range}`, 60000, async () => {
+      const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`;
+      return yahooFetch(url);
+    });
 
-    const quotes = data.quotes || [];
-    res.json(quotes.map(q => ({
-      date: q.date,
-      open: q.open,
-      high: q.high,
-      low: q.low,
-      close: q.close,
-      volume: q.volume,
+    const result = data?.chart?.result?.[0];
+    if (!result) return res.json([]);
+
+    const timestamps = result.timestamp || [];
+    const closes = result.indicators?.quote?.[0]?.close || [];
+    const opens = result.indicators?.quote?.[0]?.open || [];
+    const highs = result.indicators?.quote?.[0]?.high || [];
+    const lows = result.indicators?.quote?.[0]?.low || [];
+    const volumes = result.indicators?.quote?.[0]?.volume || [];
+
+    res.json(timestamps.map((t, i) => ({
+      date: new Date(t * 1000).toISOString(),
+      open: opens[i],
+      high: highs[i],
+      low: lows[i],
+      close: closes[i],
+      volume: volumes[i],
     })).filter(q => q.close != null));
   } catch (e) {
     console.error('History error:', e.message);
@@ -236,15 +259,14 @@ app.get('/api/history/:symbol', async (req, res) => {
   }
 });
 
-// ─── GET /api/trending ─ Trending / top movers ───
+// ─── GET /api/trending ─ Trending stocks via direct API ───
 app.get('/api/trending', async (req, res) => {
   try {
-    const data = await cached('trending', 300000, () =>
-      yahooFinance.trendingSymbols('US', { count: 20 })
-    );
-    const symbols = (data.quotes || []).map(q => q.symbol).slice(0, 15);
-    const quotes = await Promise.all(symbols.map(s =>
-      cached(`quote_${s}`, 30000, () => safeQuote(s)).catch(() => null)
+    // Use a curated list and fetch live quotes instead of unreliable trending API
+    const popular = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','NFLX','AMD',
+      'PLTR','COIN','SOFI','V','DIS'];
+    const quotes = await Promise.all(popular.map(s =>
+      cached(`quote_${s}`, 60000, () => safeQuote(s)).catch(() => null)
     ));
     res.json(quotes.filter(Boolean).map(q => ({
       symbol: q.symbol,
@@ -260,11 +282,10 @@ app.get('/api/trending', async (req, res) => {
   }
 });
 
-// ─── GET /api/screener ─ Stock screener (gainers/losers/active) ───
+// ─── GET /api/screener/:type ─ Stock screener ───
 app.get('/api/screener/:type', async (req, res) => {
   try {
-    const type = req.params.type; // gainers, losers, active
-    // Use predefined popular tickers and sort by criteria
+    const type = req.params.type;
     const tickers = [
       'AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','JNJ','V',
       'WMT','PG','UNH','MA','HD','DIS','NFLX','PYPL','AMD','INTC',
@@ -332,7 +353,6 @@ Be specific, data-driven, and direct. This is not investment advice - it is anal
       const parsed = JSON.parse(text);
       res.json(parsed);
     } catch {
-      // Try to extract JSON from the response
       const match = text.match(/\{[\s\S]*\}/);
       if (match) {
         res.json(JSON.parse(match[0]));
@@ -354,7 +374,6 @@ app.post('/api/scan', async (req, res) => {
   try {
     const { portfolio, criteria } = req.body;
 
-    // Get a broad set of stock data
     const scanList = [
       'AAPL','MSFT','GOOGL','AMZN','NVDA','META','TSLA','JPM','V','JNJ',
       'WMT','PG','UNH','MA','HD','NFLX','AMD','CRM','COST','KO',
