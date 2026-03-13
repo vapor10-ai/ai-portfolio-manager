@@ -117,6 +117,29 @@ class YahooClient {
     return data?.quoteResponse?.result || [];
   }
 
+  async screener(scrId, count = 25) {
+    const data = await this.fetch(`https://query2.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=${scrId}&count=${count}`);
+    const results = data?.finance?.result?.[0]?.quotes || [];
+    return results.map(q => ({
+      symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
+      price: q.regularMarketPrice, change: q.regularMarketChange,
+      changePct: q.regularMarketChangePercent, volume: q.regularMarketVolume,
+      mktCap: q.marketCap, pe: q.trailingPE,
+    }));
+  }
+
+  async trendingTickers(count = 20) {
+    const data = await this.fetch(`https://query2.finance.yahoo.com/v1/finance/trending/US?count=${count}`);
+    const symbols = (data?.finance?.result?.[0]?.quotes || []).map(q => q.symbol).filter(Boolean);
+    if (!symbols.length) return [];
+    const quotes = await this.quotes(symbols);
+    return quotes.map(q => ({
+      symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
+      price: q.regularMarketPrice, change: q.regularMarketChange,
+      changePct: q.regularMarketChangePercent, volume: q.regularMarketVolume, mktCap: q.marketCap,
+    }));
+  }
+
   async search(query) {
     const data = await this.fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0`);
     return data?.quotes || [];
@@ -616,64 +639,35 @@ app.get('/api/indices', async (req, res) => {
   }
 });
 
-// ─── Trending (popular stocks with live data) ───
+// ─── Trending (real Yahoo trending tickers) ───
 app.get('/api/trending', async (req, res) => {
   try {
-    const popular = [
-      'AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','NFLX','AMD',
-      'PLTR','COIN','SOFI','V','DIS','ARM','SMCI','MSTR','AVGO','CRM',
-    ];
-    const quotes = await cached('trending', 30000, () => yahoo.quotes(popular));
-    res.json(quotes.map(q => ({
-      symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
-      price: q.regularMarketPrice, change: q.regularMarketChange,
-      changePct: q.regularMarketChangePercent, volume: q.regularMarketVolume, mktCap: q.marketCap,
-    })));
+    const results = await cached('trending_real', 30000, () => yahoo.trendingTickers(20));
+    res.json(results);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    // Fallback to hardcoded popular list
+    try {
+      const popular = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','NFLX','AMD','PLTR','COIN','SOFI','V','DIS'];
+      const quotes = await cached('trending_fallback', 30000, () => yahoo.quotes(popular));
+      res.json(quotes.map(q => ({
+        symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
+        price: q.regularMarketPrice, change: q.regularMarketChange,
+        changePct: q.regularMarketChangePercent, volume: q.regularMarketVolume, mktCap: q.marketCap,
+      })));
+    } catch { res.status(500).json({ error: e.message }); }
   }
 });
 
-// ─── Screener (expanded universe) ───
+// ─── Screener (real Yahoo market movers — whole market) ───
 app.get('/api/screener/:type', async (req, res) => {
   try {
     const type = req.params.type;
-    const tickers = [
-      // Mega cap tech
-      'AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','AVGO','ORCL','CRM',
-      // Finance & payments
-      'JPM','V','MA','GS','BAC','WFC','AXP','BLK','SCHW','PYPL',
-      // Health & pharma
-      'JNJ','UNH','LLY','ABBV','MRK','PFE','TMO','ABT','AMGN','GILD',
-      // Consumer
-      'WMT','PG','COST','KO','PEP','MCD','NKE','SBUX','TGT','HD',
-      // Energy
-      'XOM','CVX','COP','SLB','EOG','OXY','MPC','VLO','PSX','HAL',
-      // Industrials & defense
-      'BA','CAT','GE','HON','RTX','LMT','DE','UPS','FDX','MMM',
-      // Semis & hardware
-      'AMD','INTC','QCOM','TXN','AMAT','MU','LRCX','KLAC','MRVL','ARM',
-      // Software & cloud
-      'ADBE','CSCO','ACN','INTU','NOW','SNOW','DDOG','NET','CRWD','ZS',
-      // High-growth & speculative
-      'SOFI','PLTR','RIVN','SNAP','COIN','SQ','SHOP','ROKU','DKNG','MARA',
-      'SMCI','MSTR','HOOD','RBLX','U','PATH','AFRM','UPST','IONQ','RGTI',
-      // ETFs (major)
-      'SPY','QQQ','DIA','IWM','VTI','ARKK','XLF','XLE','XLV','XLK',
-      'GLD','SLV','TLT','HYG','EEM','VWO','IBIT','ETHE',
-    ];
-    const quotes = await cached('screener', 30000, () => yahoo.quotes(tickers));
-    let results = quotes.map(q => ({
-      symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
-      price: q.regularMarketPrice, change: q.regularMarketChange,
-      changePct: q.regularMarketChangePercent, volume: q.regularMarketVolume,
-      mktCap: q.marketCap, pe: q.trailingPE,
-    }));
-    if (type === 'gainers') results.sort((a,b) => (b.changePct||0) - (a.changePct||0));
-    else if (type === 'losers') results.sort((a,b) => (a.changePct||0) - (b.changePct||0));
-    else results.sort((a,b) => (b.volume||0) - (a.volume||0));
-    res.json(results.slice(0, 20));
+    const scrMap = { gainers: 'day_gainers', losers: 'day_losers', active: 'most_actives' };
+    const scrId = scrMap[type] || 'most_actives';
+    const results = await cached(`screener_${scrId}`, 30000, () => yahoo.screener(scrId, 25));
+    res.json(results);
   } catch (e) {
+    console.error('Screener error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -703,15 +697,16 @@ app.post('/api/scan', async (req, res) => {
   if (!apiKey) return res.status(400).json({ error: 'Claude API key not configured' });
   try {
     const { portfolio, criteria } = req.body;
-    const scanList = ['AAPL','MSFT','GOOGL','AMZN','NVDA','META','TSLA','JPM','V','JNJ','WMT','PG','UNH','MA','HD','NFLX','AMD','CRM','COST','KO','PEP','ABBV','MRK','XOM','CVX','LLY','AVGO','ADBE','ORCL','CSCO','ACN','TXN','QCOM','INTU','AMAT','MU','SOFI','PLTR','SQ','SHOP'];
-    const quotes = await cached('scan_quotes', 60000, () => yahoo.quotes(scanList));
-    const stockData = quotes.map(q => ({
-      symbol: q.symbol, name: q.shortName, price: q.regularMarketPrice,
-      changePct: q.regularMarketChangePercent?.toFixed(2), pe: q.trailingPE?.toFixed(1),
-      fwdPe: q.forwardPE?.toFixed(1), mktCap: q.marketCap,
-      divYield: q.trailingAnnualDividendYield ? (q.trailingAnnualDividendYield * 100).toFixed(2) : '0',
-      beta: q.beta?.toFixed(2),
-    }));
+    // Get real market movers + trending for the AI to analyze
+    const [gainers, losers, active, trendingData] = await Promise.all([
+      cached('scan_gainers', 30000, () => yahoo.screener('day_gainers', 15)),
+      cached('scan_losers', 30000, () => yahoo.screener('day_losers', 10)),
+      cached('scan_active', 30000, () => yahoo.screener('most_actives', 10)),
+      cached('scan_trending', 30000, () => yahoo.trendingTickers(10)).catch(() => []),
+    ]);
+    const stockData = [...gainers, ...losers, ...active, ...trendingData]
+      .filter((v, i, a) => a.findIndex(x => x.symbol === v.symbol) === i) // dedupe
+      .map(q => ({ symbol: q.symbol, name: q.name, price: q.price, changePct: q.changePct?.toFixed(2), pe: q.pe?.toFixed(1), mktCap: q.mktCap }));
     const prompt = `You are an AI market scanner for a portfolio manager. Analyze these stocks and provide investment recommendations.\n\nCURRENT PORTFOLIO: ${JSON.stringify(portfolio || [])}\nUSER CRITERIA: ${criteria || 'Find best opportunities across all criteria - value, growth, and income'}\n\nMARKET DATA:\n${JSON.stringify(stockData, null, 2)}\n\nProvide recommendations in this EXACT JSON format:\n{"marketSentiment":"Bullish" or "Neutral" or "Bearish","marketSummary":"2-3 sentence market overview","recommendations":[{"symbol":"TICKER","name":"Company Name","action":"Strong Buy" or "Buy" or "Watch" or "Avoid","reason":"1-2 sentence explanation","category":"Value" or "Growth" or "Income" or "Momentum"}],"diversificationTip":"1 sentence about portfolio diversification","sectorOpportunity":"1 sentence about which sectors look attractive"}\n\nProvide 8-12 recommendations sorted by conviction. Be data-driven and specific. This is analytical commentary, not investment advice.`;
     const text = await callClaude(apiKey, [{ role: 'user', content: prompt }], 2048);
     try { res.json(JSON.parse(text)); } catch {
