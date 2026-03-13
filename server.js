@@ -3,156 +3,67 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import initSqlJs from 'sql.js';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ═══════════════════════════════════════
-// DATABASE (sql.js – pure JS SQLite)
+// DATABASE (JSON file – zero dependencies)
 // ═══════════════════════════════════════
-const dbPath = path.join(__dirname, 'data', 'portfolio.db');
-mkdirSync(path.join(__dirname, 'data'), { recursive: true });
+const dataDir = path.join(__dirname, 'data');
+const dbPath = path.join(dataDir, 'db.json');
+mkdirSync(dataDir, { recursive: true });
 
-const SQL = await initSqlJs();
-let db;
-if (existsSync(dbPath)) {
-  const buf = readFileSync(dbPath);
-  db = new SQL.Database(buf);
-} else {
-  db = new SQL.Database();
-}
+const defaults = {
+  positions: [],
+  watchlists: [{ name: 'Main', items: [] }],
+  settings: { budget: { total: 0, maxPerStock: 20, maxPerSector: 40 }, theme: 'dark', dataSource: 'yahoo', avKey: '' },
+};
 
-// Helper: persist db to disk (debounced)
+let store;
+try {
+  store = existsSync(dbPath) ? JSON.parse(readFileSync(dbPath, 'utf8')) : structuredClone(defaults);
+} catch { store = structuredClone(defaults); }
+// Ensure all keys exist
+if (!store.positions) store.positions = [];
+if (!store.watchlists || !store.watchlists.length) store.watchlists = [{ name: 'Main', items: [] }];
+if (!store.settings) store.settings = { ...defaults.settings };
+
+// Debounced save
 let saveTimer = null;
-function saveDb() {
+function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const data = db.export();
-    writeFileSync(dbPath, Buffer.from(data));
-  }, 200);
+    try { writeFileSync(dbPath, JSON.stringify(store, null, 2)); } catch (e) { console.error('DB save error:', e.message); }
+  }, 300);
 }
-function saveDbNow() {
+function saveNow() {
   clearTimeout(saveTimer);
-  const data = db.export();
-  writeFileSync(dbPath, Buffer.from(data));
-}
-
-db.run('PRAGMA foreign_keys = ON');
-
-// Create tables
-db.run(`CREATE TABLE IF NOT EXISTS positions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ticker TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL DEFAULT '',
-  shares REAL NOT NULL DEFAULT 0,
-  buy_price REAL NOT NULL DEFAULT 0,
-  added_at INTEGER NOT NULL DEFAULT 0
-)`);
-db.run(`CREATE TABLE IF NOT EXISTS watchlists (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL DEFAULT 'Main',
-  sort_order INTEGER NOT NULL DEFAULT 0
-)`);
-db.run(`CREATE TABLE IF NOT EXISTS watchlist_items (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  watchlist_id INTEGER NOT NULL,
-  symbol TEXT NOT NULL,
-  name TEXT NOT NULL DEFAULT '',
-  added_at INTEGER NOT NULL DEFAULT 0,
-  FOREIGN KEY (watchlist_id) REFERENCES watchlists(id) ON DELETE CASCADE,
-  UNIQUE(watchlist_id, symbol)
-)`);
-db.run(`CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL DEFAULT ''
-)`);
-
-// Ensure at least one watchlist exists
-const [wlCount] = db.exec('SELECT COUNT(*) as c FROM watchlists');
-if (!wlCount || wlCount.values[0][0] === 0) {
-  db.run('INSERT INTO watchlists (name, sort_order) VALUES (?, 0)', ['Main']);
-  saveDb();
-}
-
-// ─── sql.js helpers ───
-function allRows(sql, params = []) {
-  const stmt = db.prepare(sql);
-  if (params.length) stmt.bind(params);
-  const rows = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  return rows;
-}
-function getRow(sql, params = []) {
-  const stmt = db.prepare(sql);
-  if (params.length) stmt.bind(params);
-  const row = stmt.step() ? stmt.getAsObject() : null;
-  stmt.free();
-  return row;
-}
-function run(sql, params = []) {
-  db.run(sql, params);
+  try { writeFileSync(dbPath, JSON.stringify(store, null, 2)); } catch (e) { console.error('DB save error:', e.message); }
 }
 
 // ─── DB Helpers ───
 const DB = {
-  // Positions
-  getPositions: () => allRows('SELECT ticker, name, shares, buy_price as buyPrice, added_at as addedAt FROM positions ORDER BY added_at'),
+  getPositions: () => store.positions,
   upsertPosition: (p) => {
-    run(`INSERT INTO positions (ticker, name, shares, buy_price, added_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, shares=excluded.shares, buy_price=excluded.buy_price`,
-      [p.ticker, p.name, p.shares, p.buyPrice, p.addedAt]);
-    saveDb();
+    const idx = store.positions.findIndex(x => x.ticker === p.ticker);
+    if (idx >= 0) Object.assign(store.positions[idx], p);
+    else store.positions.push(p);
+    save();
   },
-  deletePosition: (ticker) => { run('DELETE FROM positions WHERE ticker = ?', [ticker]); saveDb(); },
-  replaceAllPositions: (positions) => {
-    run('DELETE FROM positions');
-    for (const p of positions) {
-      run('INSERT INTO positions (ticker, name, shares, buy_price, added_at) VALUES (?, ?, ?, ?, ?)',
-        [p.ticker, p.name || '', p.shares || 0, p.buyPrice || 0, p.addedAt || 0]);
-    }
-    saveDb();
-  },
+  deletePosition: (ticker) => { store.positions = store.positions.filter(p => p.ticker !== ticker); save(); },
+  replaceAllPositions: (positions) => { store.positions = positions; save(); },
 
-  // Watchlists
-  getWatchlists: () => {
-    const lists = allRows('SELECT id, name, sort_order as sortOrder FROM watchlists ORDER BY sort_order');
-    return lists.map(l => ({
-      ...l,
-      items: allRows('SELECT symbol, name, added_at as addedAt FROM watchlist_items WHERE watchlist_id = ? ORDER BY added_at', [l.id]),
-    }));
-  },
-  replaceAllWatchlists: (watchlists) => {
-    run('DELETE FROM watchlist_items');
-    run('DELETE FROM watchlists');
-    watchlists.forEach((wl, i) => {
-      run('INSERT INTO watchlists (name, sort_order) VALUES (?, ?)', [wl.name, i]);
-      const lastId = db.exec('SELECT last_insert_rowid()')[0].values[0][0];
-      (wl.items || []).forEach(item => {
-        run('INSERT INTO watchlist_items (watchlist_id, symbol, name, added_at) VALUES (?, ?, ?, ?)',
-          [lastId, item.symbol, item.name || '', item.addedAt || Date.now()]);
-      });
-    });
-    saveDb();
-  },
+  getWatchlists: () => store.watchlists.map(wl => ({ name: wl.name, items: wl.items || [] })),
+  replaceAllWatchlists: (watchlists) => { store.watchlists = watchlists; save(); },
 
-  // Settings
-  getSetting: (key, fallback = null) => {
-    const row = getRow('SELECT value FROM settings WHERE key = ?', [key]);
-    if (!row) return fallback;
-    try { return JSON.parse(row.value); } catch { return row.value; }
-  },
-  setSetting: (key, value) => {
-    run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
-      [key, JSON.stringify(value)]);
-    saveDb();
-  },
+  getSetting: (key, fallback = null) => store.settings[key] ?? fallback,
+  setSetting: (key, value) => { store.settings[key] = value; save(); },
 };
 
 // Save on exit
-process.on('SIGTERM', () => { saveDbNow(); process.exit(0); });
-process.on('SIGINT', () => { saveDbNow(); process.exit(0); });
+process.on('SIGTERM', () => { saveNow(); process.exit(0); });
+process.on('SIGINT', () => { saveNow(); process.exit(0); });
 
 // ─── Direct Yahoo Finance client with cookie/crumb auth ───
 class YahooClient {

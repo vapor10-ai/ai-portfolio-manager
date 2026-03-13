@@ -1,16 +1,16 @@
 {
   "name": "ai-portfolio-manager",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "AI-Powered Stock Portfolio Manager with Claude AI & Real-Time Data",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build": "npm install"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "yahoo-finance2": "^2.11.0",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5"
   },
