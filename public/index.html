@@ -34,8 +34,9 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 .mo{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:1000;padding:0;backdrop-filter:blur(4px)}
 .mo.mo2{z-index:1010}
 .mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--sab));width:100%;max-width:600px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.mc.fi{overflow:hidden !important;display:flex;flex-direction:column}
 @media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh;padding-bottom:20px}}
-html.modal-open,body.modal-open{overflow:hidden;height:100%}
+html.modal-open,body.modal-open{overflow:hidden;height:100%;position:fixed;width:100%}
 .pb{height:6px;background:var(--hover);border-radius:3px;overflow:hidden}
 .pf{height:100%;border-radius:3px;transition:width .5s ease}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -139,11 +140,15 @@ const Doughnut=({data,labels,colors,size=160})=>{
 // ─── Body Scroll Lock ───
 function useBodyScrollLock(){
   useEffect(()=>{
+    const scrollY=window.scrollY;
     document.documentElement.classList.add('modal-open');
     document.body.classList.add('modal-open');
+    document.body.style.top=`-${scrollY}px`;
     return()=>{
       document.documentElement.classList.remove('modal-open');
       document.body.classList.remove('modal-open');
+      document.body.style.top='';
+      window.scrollTo(0,scrollY);
     };
   },[]);
 }
@@ -217,7 +222,7 @@ const SearchModal=({onClose,onSelect})=>{
 
   return(
     <div className="mo mo2" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'85vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'85vh'}}>
         <div style={{display:'flex',gap:10,marginBottom:12,alignItems:'center',flexShrink:0}}>
           <div style={{flex:1,position:'relative'}}>
             <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. AAPL)" style={{paddingLeft:40,fontSize:16}}/>
@@ -477,13 +482,13 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
 
   return(
     <div className="fi">
-      {pos.length===0?<div className="c" style={{background:'linear-gradient(135deg,#111827 0%,#1a2540 100%)',textAlign:'center',padding:'30px 20px'}}>
+      {pos.length===0?<div className="c" style={{background:'linear-gradient(135deg,var(--bg2) 0%,var(--card) 100%)',textAlign:'center',padding:'30px 20px'}}>
         <div style={{width:50,height:50,borderRadius:14,background:'linear-gradient(135deg,var(--acc),#42a5f5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,margin:'0 auto 12px'}}>$</div>
         <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>Welcome to AI Portfolio</h2>
         <p style={{fontSize:13,color:'var(--t2)',lineHeight:1.5,marginBottom:16}}>Track your stocks, analyze with AI, and monitor risk — all in one place.</p>
         <button className="bp" onClick={()=>onNav('portfolio')} style={{padding:'12px 28px',fontSize:14}}>Add Your First Stock</button>
       </div>:
-      <div className="c" style={{background:'linear-gradient(135deg,#111827 0%,#1a2540 100%)'}}>
+      <div className="c" style={{background:'linear-gradient(135deg,var(--bg2) 0%,var(--card) 100%)'}}>
         <div style={{fontSize:11,color:'var(--t3)',letterSpacing:1,textTransform:'uppercase'}}>Portfolio Value</div>
         <div style={{fontSize:34,fontWeight:700,marginTop:4,marginBottom:4}}>{F.$(tv)}</div>
         <div style={{display:'flex',gap:12,alignItems:'center'}}>
@@ -1117,6 +1122,30 @@ const App=()=>{
     const iv=setInterval(refresh,30000);
     return()=>clearInterval(iv);
   },[pos.length]); // only restart when count changes
+
+  // Auto-sync from server every 30s (cross-device sync)
+  useEffect(()=>{
+    if(!dbLoaded)return;
+    const syncFromServer=async()=>{
+      try{
+        const state=await api.get('/api/db/state');
+        if(!state)return;
+        // Only update if server data differs (compare JSON strings to avoid loops)
+        if(state.positions&&JSON.stringify(state.positions)!==JSON.stringify(pos)){
+          setPos(prev=>{const merged=state.positions.map(sp=>{const local=prev.find(p=>p.ticker===sp.ticker);return local?{...sp,price:local.price,beta:local.beta}:sp;});return merged;});
+          S.s('pos',state.positions);
+        }
+        if(state.watchlists&&JSON.stringify(state.watchlists)!==JSON.stringify(wl)){
+          setWl(state.watchlists);S.s('wl',state.watchlists);
+        }
+        if(state.budget&&JSON.stringify(state.budget)!==JSON.stringify(budget)){
+          setBudget(state.budget);S.s('budget',state.budget);
+        }
+      }catch{}
+    };
+    const iv=setInterval(syncFromServer,30000);
+    return()=>clearInterval(iv);
+  },[dbLoaded]);
 
   const tabs=[
     {id:'home',icon:'home',label:'Home'},
