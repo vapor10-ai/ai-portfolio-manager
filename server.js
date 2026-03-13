@@ -263,7 +263,7 @@ app.get('/api/quote/:symbol', async (req, res) => {
       async (av) => {
         const q = await av.quote(symbol);
         if (!q) throw new Error('Symbol not found');
-        return q;
+        return { ...q, name: q.name || symbol, exchange: q.exchange || '', currency: q.currency || 'USD', marketState: q.marketState || 'CLOSED' };
       }
     ));
     res.json(result);
@@ -328,7 +328,7 @@ app.get('/api/financials/:symbol', async (req, res) => {
         const sd = data.summaryDetail || {};
         const ks = data.defaultKeyStatistics || {};
         const fd = data.financialData || {};
-        const raw = (o) => o?.raw ?? o ?? null;
+        const raw = (o) => { if(o==null)return null; if(typeof o==='number')return o; if(typeof o==='string')return o; if(typeof o==='object'&&'raw' in o)return o.raw??null; return null; };
         return {
           symbol, pe: raw(sd.trailingPE), fwdPe: raw(sd.forwardPE), peg: raw(ks.pegRatio),
           priceToBook: raw(sd.priceToBook),

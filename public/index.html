@@ -80,10 +80,10 @@ const api = {
 
 // ─── Formatting ───
 const F = {
-  $: n => n==null?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}),
-  pct: n => n==null?'—':(n>=0?'+':'')+Number(n).toFixed(2)+'%',
-  c: n => {if(n==null)return'—';const a=Math.abs(n);if(a>=1e12)return'$'+(n/1e12).toFixed(1)+'T';if(a>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(a>=1e6)return'$'+(n/1e6).toFixed(1)+'M';return'$'+n.toLocaleString()},
-  n: (n,d=2) => n==null?'—':Number(n).toFixed(d),
+  $: n => {if(n==null||typeof n==='object')return'—';const v=Number(n);return isNaN(v)?'—':'$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})},
+  pct: n => {if(n==null||typeof n==='object')return'—';const v=Number(n);return isNaN(v)?'—':(v>=0?'+':'')+v.toFixed(2)+'%'},
+  c: n => {if(n==null||typeof n==='object')return'—';const v=Number(n);if(isNaN(v))return'—';const a=Math.abs(v);if(a>=1e12)return'$'+(v/1e12).toFixed(1)+'T';if(a>=1e9)return'$'+(v/1e9).toFixed(1)+'B';if(a>=1e6)return'$'+(v/1e6).toFixed(1)+'M';return'$'+v.toLocaleString()},
+  n: (n,d=2) => {if(n==null||typeof n==='object')return'—';const v=Number(n);return isNaN(v)?'—':v.toFixed(d)},
 };
 
 // ─── Sectors ───
@@ -324,9 +324,9 @@ const StockDetailInner=({symbol,onClose})=>{
               ['Open',F.$(quote.open)],['Prev Close',F.$(quote.prevClose)],
               ['Day High',F.$(quote.high)],['Day Low',F.$(quote.low)],
               ['52w High',F.$(quote.high52)],['52w Low',F.$(quote.low52)],
-              ['Volume',quote.volume?.toLocaleString()],['Mkt Cap',F.c(quote.mktCap)],
+              ['Volume',typeof quote.volume==='number'?quote.volume.toLocaleString():'—'],['Mkt Cap',F.c(quote.mktCap)],
               ['P/E',F.n(quote.pe,1)],['Fwd P/E',F.n(quote.fwdPe,1)],
-              ['Div Yield',quote.divYield?quote.divYield.toFixed(2)+'%':'—'],['Beta',F.n(quote.beta,2)],
+              ['Div Yield',typeof quote.divYield==='number'&&quote.divYield?quote.divYield.toFixed(2)+'%':'—'],['Beta',F.n(quote.beta,2)],
             ].map(([k,v],i)=>
               <div key={i} style={{display:'flex',justifyContent:'space-between'}}>
                 <span style={{fontSize:12,color:'var(--t2)'}}>{k}</span><span style={{fontSize:12,fontWeight:600}}>{v||'—'}</span>
@@ -343,11 +343,11 @@ const StockDetailInner=({symbol,onClose})=>{
               ['PEG Ratio',F.n(fin.peg,2)],['P/B',F.n(fin.priceToBook,2)],
               ['Rev Growth',fin.revenueGrowth!=null?F.pct(fin.revenueGrowth):'—'],
               ['Earn Growth',fin.earningsGrowth!=null?F.pct(fin.earningsGrowth):'—'],
-              ['Profit Margin',fin.profitMargin!=null?(fin.profitMargin*100).toFixed(1)+'%':'—'],
-              ['ROE',fin.returnOnEquity!=null?(fin.returnOnEquity*100).toFixed(1)+'%':'—'],
+              ['Profit Margin',typeof fin.profitMargin==='number'?(fin.profitMargin*100).toFixed(1)+'%':'—'],
+              ['ROE',typeof fin.returnOnEquity==='number'?(fin.returnOnEquity*100).toFixed(1)+'%':'—'],
               ['D/E',F.n(fin.debtToEquity,1)],['Current Ratio',F.n(fin.currentRatio,2)],
               ['Free Cash Flow',F.c(fin.freeCashflow)],['Target Price',F.$(fin.targetMeanPrice)],
-              ['Analyst Rating',fin.recommendationKey||'—'],['# Analysts',fin.numberOfAnalysts||'—'],
+              ['Analyst Rating',typeof fin.recommendationKey==='string'?fin.recommendationKey:'—'],['# Analysts',typeof fin.numberOfAnalysts==='number'?fin.numberOfAnalysts:'—'],
             ].map(([k,v],i)=>
               <div key={i} style={{display:'flex',justifyContent:'space-between'}}>
                 <span style={{fontSize:12,color:'var(--t2)'}}>{k}</span><span style={{fontSize:12,fontWeight:600}}>{v}</span>
@@ -595,6 +595,8 @@ const WatchlistView=({wl,setWl,onStock})=>{
   const [activeList,setActiveList]=useState(0);
   const [newListName,setNewListName]=useState('');
   const [showNewList,setShowNewList]=useState(false);
+  const [editingListIdx,setEditingListIdx]=useState(null);
+  const [editListName,setEditListName]=useState('');
 
   const addToList=(stock)=>{
     const u=[...wl];
@@ -615,6 +617,14 @@ const WatchlistView=({wl,setWl,onStock})=>{
     setWl([...wl,{name:newListName.trim(),items:[]}]);
     setActiveList(wl.length);
     setNewListName('');setShowNewList(false);
+  };
+
+  const renameList=()=>{
+    if(editingListIdx==null||!editListName.trim())return;
+    const u=[...wl];
+    u[editingListIdx]={...u[editingListIdx],name:editListName.trim()};
+    setWl(u);
+    setEditingListIdx(null);setEditListName('');
   };
 
   const deleteList=(idx)=>{
@@ -652,14 +662,15 @@ const WatchlistView=({wl,setWl,onStock})=>{
       </div>
 
       {/* List tabs */}
-      <div style={{display:'flex',gap:6,overflowX:'auto',marginBottom:16,paddingBottom:4}}>
+      <div style={{display:'flex',gap:6,overflowX:'auto',marginBottom:16,paddingBottom:4,alignItems:'center'}}>
         {wl.map((w,i)=>
-          <button key={i} onClick={()=>setActiveList(i)} style={{
+          <button key={i} onClick={()=>setActiveList(i)} onDoubleClick={(e)=>{e.preventDefault();setEditingListIdx(i);setEditListName(w.name);}} style={{
             padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
             background:activeList===i?'var(--acc)':'var(--hover)',
             color:activeList===i?'#000':'var(--t2)',
           }}>{w.name} ({w.items.length})</button>
         )}
+        <button onClick={()=>{setEditingListIdx(activeList);setEditListName(wl[activeList]?.name||'');}} style={{background:'none',color:'var(--t3)',padding:4,flexShrink:0}} title="Rename list"><I n="settings" s={14}/></button>
       </div>
 
       {list && list.items.length===0?
@@ -694,8 +705,17 @@ const WatchlistView=({wl,setWl,onStock})=>{
       {showNewList&&<div className="mo" onClick={()=>setShowNewList(false)}>
         <div className="mc fi" onClick={e=>e.stopPropagation()}>
           <h3 style={{fontSize:18,fontWeight:700,marginBottom:16}}>New Watchlist</h3>
-          <input autoFocus value={newListName} onChange={e=>setNewListName(e.target.value)} placeholder="e.g. Tech Stocks, Dividends..." onKeyDown={e=>e.key==='Enter'&&createList()} style={{marginBottom:16}}/>
+          <input autoFocus value={newListName} onChange={e=>setNewListName(e.target.value)} placeholder="e.g. Tech Stocks, Dividends..." onKeyDown={e=>e.key==='Enter'&&createList()} style={{marginBottom:16,fontSize:16}}/>
           <button className="bp" onClick={createList} style={{width:'100%'}}>Create</button>
+        </div>
+      </div>}
+      {editingListIdx!=null&&<div className="mo" onClick={()=>setEditingListIdx(null)}>
+        <div className="mc fi" onClick={e=>e.stopPropagation()}>
+          <h3 style={{fontSize:18,fontWeight:700,marginBottom:4}}>Rename List</h3>
+          <p style={{fontSize:12,color:'var(--t3)',marginBottom:16}}>Use emojis for quick recognition</p>
+          <input autoFocus value={editListName} onChange={e=>setEditListName(e.target.value)} placeholder="e.g. Tech Picks, Dividend Kings..." onKeyDown={e=>e.key==='Enter'&&renameList()} style={{marginBottom:16,fontSize:16}}/>
+          <button className="bp" onClick={renameList} style={{width:'100%',marginBottom:8}}>Save Name</button>
+          <button className="bs" onClick={()=>setEditingListIdx(null)} style={{width:'100%'}}>Cancel</button>
         </div>
       </div>}
     </div>
