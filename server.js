@@ -33,14 +33,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Debug endpoint ───
 app.get('/api/debug', async (req, res) => {
-  const mod = await import('yahoo-finance2');
-  const fn = mod.default || mod;
-  const called = typeof fn === 'function' ? fn() : fn;
-  const proto = called ? Object.getOwnPropertyNames(Object.getPrototypeOf(called)).filter(k => k !== 'constructor') : [];
   res.json({
-    calledType: typeof called,
-    calledKeys: called ? Object.keys(called) : [],
-    protoMethods: proto,
     yfType: typeof yahooFinance,
     yfKeys: Object.keys(yahooFinance),
     yfProto: Object.getOwnPropertyNames(Object.getPrototypeOf(yahooFinance)).filter(k => k !== 'constructor'),
