@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a0e17">
 <title>AI Portfolio Manager</title>
@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-:root{--bg:#0a0e17;--bg2:#111827;--card:#1a2035;--hover:#222b42;--brd:#1e2538;--t1:#e8eaed;--t2:#8b95a8;--t3:#5a6478;--acc:#00d4aa;--accd:rgba(0,212,170,.12);--grn:#00d4aa;--red:#ff4757;--yel:#ffa726;--blu:#42a5f5;--pur:#ab47bc;--org:#ff7043;--nav:64px;--hdr:52px}
+:root{--bg:#0a0e17;--bg2:#111827;--card:#1a2035;--hover:#222b42;--brd:#1e2538;--t1:#e8eaed;--t2:#8b95a8;--t3:#5a6478;--acc:#00d4aa;--accd:rgba(0,212,170,.12);--grn:#00d4aa;--red:#ff4757;--yel:#ffa726;--blu:#42a5f5;--pur:#ab47bc;--org:#ff7043;--nav:64px;--hdr:52px;--sab:env(safe-area-inset-bottom,0px)}
 [data-theme=light]{--bg:#f0f2f5;--bg2:#fff;--card:#fff;--hover:#f5f5f5;--brd:#e2e8f0;--t1:#1a202c;--t2:#64748b;--t3:#94a3b8;--acc:#0d9488;--accd:rgba(13,148,136,.08)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
@@ -32,8 +32,9 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 @keyframes spin{to{transform:rotate(360deg)}}
 .sp{width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 .mo{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:1000;padding:0;backdrop-filter:blur(4px);overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-@media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh}}
+.mo.mo2{z-index:1010}
+.mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;padding-bottom:calc(20px + var(--sab));width:100%;max-width:600px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+@media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh;padding-bottom:20px}}
 body.modal-open{overflow:hidden;position:fixed;width:100%;touch-action:none}
 .pb{height:6px;background:var(--hover);border-radius:3px;overflow:hidden}
 .pf{height:100%;border-radius:3px;transition:width .5s ease}
@@ -155,15 +156,16 @@ const SearchModal=({onClose,onSelect})=>{
   },[q]);
 
   return(
-    <div className="mo" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh'}}>
-        <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center'}}>
+    <div className="mo mo2" onClick={onClose}>
+      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
+        <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center',flexShrink:0}}>
           <div style={{flex:1,position:'relative'}}>
-            <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. Apple, AAPL)" style={{paddingLeft:40}}/>
+            <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search stocks (e.g. Apple, AAPL)" style={{paddingLeft:40,fontSize:16}}/>
             <div style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'var(--t3)'}}><I n="search" s={18}/></div>
           </div>
-          <button onClick={onClose} style={{background:'none',color:'var(--t2)',padding:8}}><I n="x" s={22}/></button>
+          <button onClick={onClose} style={{background:'none',color:'var(--t2)',padding:8,minWidth:40,minHeight:40}}><I n="x" s={22}/></button>
         </div>
+        <div style={{flex:1,overflowY:'auto',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch',minHeight:0}}>
         {loading && <div style={{textAlign:'center',padding:20}}><div className="sp"/></div>}
         {results.length > 0 ? (
           <div>{results.map(r=>(
@@ -190,6 +192,7 @@ const SearchModal=({onClose,onSelect})=>{
             ))}
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );
@@ -205,11 +208,18 @@ const StockDetail=({symbol,onClose})=>{
   const [aiLoad,setAiLoad]=useState(false);
   const [range,setRange]=useState('1mo');
   const [error,setError]=useState(null);
+  const [loadTimeout,setLoadTimeout]=useState(false);
 
   useEffect(()=>{
-    setError(null);
-    api.get(`/api/quote/${symbol}`).then(setQuote).catch(e=>setError(e.message));
+    setError(null);setLoadTimeout(false);
+    const timer=setTimeout(()=>setLoadTimeout(true),12000);
+    api.get(`/api/quote/${symbol}`).then(q=>{
+      clearTimeout(timer);
+      if(!q||q.price==null){setError('No data available for '+symbol);return;}
+      setQuote(q);
+    }).catch(e=>{clearTimeout(timer);setError(e.message||'Failed to load stock data');});
     api.get(`/api/financials/${symbol}`).then(setFin).catch(()=>{});
+    return()=>clearTimeout(timer);
   },[symbol]);
 
   useEffect(()=>{
@@ -230,8 +240,8 @@ const StockDetail=({symbol,onClose})=>{
   return(
     <div className="mo" onClick={onClose}>
       <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh'}}>
-        {error ? <div style={{textAlign:'center',padding:40}}><I n="alert" s={32} c="var(--red)"/><p style={{color:'var(--red)',marginTop:8,fontSize:14,fontWeight:600}}>Failed to load {symbol}</p><p style={{color:'var(--t3)',fontSize:12,marginTop:4}}>{error}</p><button className="bs" onClick={()=>{setError(null);api.get(`/api/quote/${symbol}`).then(setQuote).catch(e=>setError(e.message));}} style={{marginTop:12}}>Retry</button></div>
-        : !quote ? <div style={{textAlign:'center',padding:40}}><div className="sp"/></div> : <>
+        {error ? <div style={{textAlign:'center',padding:40}}><I n="alert" s={32} c="var(--red)"/><p style={{color:'var(--red)',marginTop:8,fontSize:14,fontWeight:600}}>Failed to load {symbol}</p><p style={{color:'var(--t3)',fontSize:12,marginTop:4}}>{error}</p><button className="bs" onClick={()=>{setError(null);setLoadTimeout(false);api.get(`/api/quote/${symbol}`).then(q=>{if(!q||q.price==null){setError('No data available for '+symbol);return;}setQuote(q);}).catch(e=>setError(e.message));}} style={{marginTop:12}}>Retry</button><button className="bs" onClick={onClose} style={{marginTop:8,marginLeft:8}}>Close</button></div>
+        : !quote ? <div style={{textAlign:'center',padding:40}}><div className="sp"/><p style={{color:'var(--t3)',fontSize:12,marginTop:12}}>Loading {symbol}...</p>{loadTimeout&&<><p style={{color:'var(--yel)',fontSize:12,marginTop:8}}>Taking longer than expected...</p><button className="bs" onClick={onClose} style={{marginTop:8}}>Close</button></>}</div> : <>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:4}}>
           <div><h3 style={{fontSize:22,fontWeight:700}}>{symbol}</h3><p style={{fontSize:13,color:'var(--t2)'}}>{quote.name}</p></div>
           <button onClick={onClose} style={{background:'none',color:'var(--t2)',padding:4}}><I n="x" s={22}/></button>
@@ -900,6 +910,7 @@ const App=()=>{
   const [wl,setWl]=useState(S.g('wl',[{name:'Main',items:[]}]));
   const [budget,setBudget]=useState(S.g('budget',{total:0,maxPerStock:20,maxPerSector:40}));
   const [selectedStock,setSelectedStock]=useState(null);
+  const [showGlobalSearch,setShowGlobalSearch]=useState(false);
 
   // Persist
   useEffect(()=>{S.s('pos',pos)},[pos]);
@@ -939,7 +950,7 @@ const App=()=>{
   ];
 
   return(
-    <div style={{paddingBottom:'calc(var(--nav) + 16px)'}}>
+    <div style={{paddingBottom:'calc(var(--nav) + var(--sab) + 20px)'}}>
       {/* Header */}
       <div style={{position:'sticky',top:0,zIndex:100,background:'var(--bg)',borderBottom:'1px solid var(--brd)',padding:'10px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',backdropFilter:'blur(12px)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -947,7 +958,10 @@ const App=()=>{
           <span style={{fontWeight:700,fontSize:15}}>AI Portfolio</span>
           <span className="live" style={{marginLeft:4}}/>
         </div>
-        <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{background:'none',color:'var(--t2)',padding:4}}><I n={theme==='dark'?'sun':'moon'} s={20}/></button>
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <button onClick={()=>setShowGlobalSearch(true)} style={{background:'none',color:'var(--t2)',padding:6}} title="Search stocks"><I n="search" s={20}/></button>
+          <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{background:'none',color:'var(--t2)',padding:6}}><I n={theme==='dark'?'sun':'moon'} s={20}/></button>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -967,15 +981,16 @@ const App=()=>{
       </div>
 
       {/* Bottom Nav */}
-      <nav style={{position:'fixed',bottom:0,left:0,right:0,height:'var(--nav)',background:'var(--bg2)',borderTop:'1px solid var(--brd)',display:'flex',justifyContent:'space-around',alignItems:'center',zIndex:100,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <nav style={{position:'fixed',bottom:0,left:0,right:0,background:'var(--bg2)',borderTop:'1px solid var(--brd)',display:'flex',justifyContent:'space-around',alignItems:'flex-start',zIndex:100,paddingTop:8,paddingBottom:'calc(var(--sab) + 10px)',height:'calc(var(--nav) + var(--sab) + 4px)'}}>
         {tabs.map(t=>
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{background:'none',color:tab===t.id?'var(--acc)':'var(--t3)',display:'flex',flexDirection:'column',alignItems:'center',gap:1,padding:'6px 8px'}}>
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{background:'none',color:tab===t.id?'var(--acc)':'var(--t3)',display:'flex',flexDirection:'column',alignItems:'center',gap:1,padding:'4px 8px'}}>
             <I n={t.icon} s={20} c={tab===t.id?'var(--acc)':'var(--t3)'}/>
             <span style={{fontSize:9,fontWeight:tab===t.id?600:400}}>{t.label}</span>
           </button>
         )}
       </nav>
 
+      {showGlobalSearch&&<SearchModal onClose={()=>setShowGlobalSearch(false)} onSelect={(s)=>{setSelectedStock(s.symbol);setShowGlobalSearch(false);}}/>}
       {selectedStock&&<StockDetail symbol={selectedStock} onClose={()=>setSelectedStock(null)}/>}
     </div>
   );
