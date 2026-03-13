@@ -3,8 +3,102 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ═══════════════════════════════════════
+// DATABASE
+// ═══════════════════════════════════════
+const dbPath = path.join(__dirname, 'data', 'portfolio.db');
+import { mkdirSync } from 'fs';
+mkdirSync(path.join(__dirname, 'data'), { recursive: true });
+
+const db = new Database(dbPath);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+// Create tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    shares REAL NOT NULL DEFAULT 0,
+    buy_price REAL NOT NULL DEFAULT 0,
+    added_at INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS watchlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT 'Main',
+    sort_order INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS watchlist_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    watchlist_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    added_at INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (watchlist_id) REFERENCES watchlists(id) ON DELETE CASCADE,
+    UNIQUE(watchlist_id, symbol)
+  );
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+  );
+`);
+
+// Ensure at least one watchlist exists
+const wlCount = db.prepare('SELECT COUNT(*) as c FROM watchlists').get();
+if (wlCount.c === 0) {
+  db.prepare('INSERT INTO watchlists (name, sort_order) VALUES (?, 0)').run('Main');
+}
+
+// ─── DB Helpers ───
+const DB = {
+  // Positions
+  getPositions: () => db.prepare('SELECT ticker, name, shares, buy_price as buyPrice, added_at as addedAt FROM positions ORDER BY added_at').all(),
+  upsertPosition: (p) => db.prepare(`
+    INSERT INTO positions (ticker, name, shares, buy_price, added_at) VALUES (@ticker, @name, @shares, @buyPrice, @addedAt)
+    ON CONFLICT(ticker) DO UPDATE SET name=@name, shares=@shares, buy_price=@buyPrice
+  `).run(p),
+  deletePosition: (ticker) => db.prepare('DELETE FROM positions WHERE ticker = ?').run(ticker),
+  replaceAllPositions: db.transaction((positions) => {
+    db.prepare('DELETE FROM positions').run();
+    const ins = db.prepare('INSERT INTO positions (ticker, name, shares, buy_price, added_at) VALUES (@ticker, @name, @shares, @buyPrice, @addedAt)');
+    for (const p of positions) ins.run(p);
+  }),
+
+  // Watchlists
+  getWatchlists: () => {
+    const lists = db.prepare('SELECT id, name, sort_order as sortOrder FROM watchlists ORDER BY sort_order').all();
+    return lists.map(l => ({
+      ...l,
+      items: db.prepare('SELECT symbol, name, added_at as addedAt FROM watchlist_items WHERE watchlist_id = ? ORDER BY added_at').all(l.id),
+    }));
+  },
+  replaceAllWatchlists: db.transaction((watchlists) => {
+    db.prepare('DELETE FROM watchlist_items').run();
+    db.prepare('DELETE FROM watchlists').run();
+    const insWl = db.prepare('INSERT INTO watchlists (name, sort_order) VALUES (?, ?)');
+    const insItem = db.prepare('INSERT INTO watchlist_items (watchlist_id, symbol, name, added_at) VALUES (?, ?, ?, ?)');
+    watchlists.forEach((wl, i) => {
+      const { lastInsertRowid } = insWl.run(wl.name, i);
+      (wl.items || []).forEach(item => insItem.run(lastInsertRowid, item.symbol, item.name || '', item.addedAt || Date.now()));
+    });
+  }),
+
+  // Settings (budget, theme, data source, etc.)
+  getSetting: (key, fallback = null) => {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    if (!row) return fallback;
+    try { return JSON.parse(row.value); } catch { return row.value; }
+  },
+  setSetting: (key, value) => {
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=?')
+      .run(key, JSON.stringify(value), JSON.stringify(value));
+  },
+};
 
 // ─── Direct Yahoo Finance client with cookie/crumb auth ───
 class YahooClient {
@@ -245,7 +339,93 @@ function cached(key, ttlMs, fn) {
 }
 
 // ═══════════════════════════════════════
-// API ROUTES
+// DATA API ROUTES (Portfolio, Watchlists, Settings)
+// ═══════════════════════════════════════
+
+// ─── Portfolio CRUD ───
+app.get('/api/db/positions', (req, res) => {
+  try { res.json(DB.getPositions()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/db/positions', (req, res) => {
+  try {
+    const { ticker, name, shares, buyPrice, addedAt } = req.body;
+    DB.upsertPosition({ ticker, name: name || ticker, shares: parseFloat(shares), buyPrice: parseFloat(buyPrice), addedAt: addedAt || Date.now() });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/db/positions/sync', (req, res) => {
+  try {
+    const positions = (req.body.positions || []).map(p => ({
+      ticker: p.ticker, name: p.name || p.ticker, shares: parseFloat(p.shares),
+      buyPrice: parseFloat(p.buyPrice), addedAt: p.addedAt || Date.now(),
+    }));
+    DB.replaceAllPositions(positions);
+    res.json({ ok: true, count: positions.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/db/positions/:ticker', (req, res) => {
+  try { DB.deletePosition(req.params.ticker.toUpperCase()); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Watchlist CRUD ───
+app.get('/api/db/watchlists', (req, res) => {
+  try {
+    const wl = DB.getWatchlists();
+    // Transform to match frontend format: [{name, items:[{symbol,name,addedAt}]}]
+    res.json(wl.map(l => ({ name: l.name, items: l.items })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/db/watchlists/sync', (req, res) => {
+  try {
+    const watchlists = req.body.watchlists || [];
+    DB.replaceAllWatchlists(watchlists);
+    res.json({ ok: true, count: watchlists.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Settings CRUD ───
+app.get('/api/db/settings', (req, res) => {
+  try {
+    res.json({
+      budget: DB.getSetting('budget', { total: 0, maxPerStock: 20, maxPerSector: 40 }),
+      theme: DB.getSetting('theme', 'dark'),
+      dataSource: DB.getSetting('dataSource', 'yahoo'),
+      avKey: DB.getSetting('avKey', ''),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/db/settings', (req, res) => {
+  try {
+    const { key, value } = req.body;
+    if (!key) return res.status(400).json({ error: 'key required' });
+    DB.setSetting(key, value);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Full state sync (load everything at once) ───
+app.get('/api/db/state', (req, res) => {
+  try {
+    res.json({
+      positions: DB.getPositions(),
+      watchlists: DB.getWatchlists().map(l => ({ name: l.name, items: l.items })),
+      budget: DB.getSetting('budget', { total: 0, maxPerStock: 20, maxPerSector: 40 }),
+      theme: DB.getSetting('theme', 'dark'),
+      dataSource: DB.getSetting('dataSource', 'yahoo'),
+      avKey: DB.getSetting('avKey', ''),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════
+// MARKET API ROUTES
 // ═══════════════════════════════════════
 
 // ─── Quote ───
