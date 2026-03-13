@@ -6,12 +6,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Dynamic import to handle yahoo-finance2 ESM export correctly
-let yahooFinance;
+// yahoo-finance2 exports a class constructor
 const yfModule = await import('yahoo-finance2');
-const yfExport = yfModule.default || yfModule;
-// If it's a factory function, call it; otherwise use directly
-yahooFinance = typeof yfExport === 'function' ? yfExport() : yfExport;
+const YahooFinance = yfModule.default || yfModule;
+const yahooFinance = new YahooFinance();
 // Claude API via direct HTTP (no SDK needed)
 async function callClaude(apiKey, messages, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
