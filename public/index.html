@@ -54,9 +54,17 @@ canvas{max-width:100%}
 const {useState,useEffect,useRef,useCallback,useMemo} = React;
 
 // ─── API Client ───
+function getDataHeaders() {
+  const src = S.g('dataSource', 'yahoo');
+  const avKey = S.g('avKey', '');
+  const h = {};
+  if (src === 'alphavantage') h['x-data-source'] = 'alphavantage';
+  if (avKey) h['x-av-key'] = avKey;
+  return h;
+}
 const api = {
-  get: async (url) => { const r = await fetch(url); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||r.statusText); return r.json(); },
-  post: async (url, body) => { const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||r.statusText); return r.json(); },
+  get: async (url) => { const r = await fetch(url, {headers: getDataHeaders()}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||r.statusText); return r.json(); },
+  post: async (url, body) => { const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json', ...getDataHeaders()},body:JSON.stringify(body)}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||r.statusText); return r.json(); },
 };
 
 // ─── Storage ───
@@ -738,6 +746,13 @@ const RiskView=({pos,budget})=>{
 
 // ─── Settings ───
 const SettingsView=({theme,setTheme,budget,setBudget})=>{
+  const [dataSource,setDataSource]=useState(S.g('dataSource','yahoo'));
+  const [avKey,setAvKey]=useState(S.g('avKey',''));
+  const [avSaved,setAvSaved]=useState(false);
+
+  const handleSourceChange=(src)=>{setDataSource(src);S.s('dataSource',src);cache&&cache.clear&&cache.clear();};
+  const handleAvKeySave=()=>{S.s('avKey',avKey);setAvSaved(true);setTimeout(()=>setAvSaved(false),2000);};
+
   return(
     <div className="fi">
       <h2 style={{fontSize:20,fontWeight:700,marginBottom:16}}>Settings</h2>
@@ -747,6 +762,40 @@ const SettingsView=({theme,setTheme,budget,setBudget})=>{
           <button onClick={()=>setTheme('dark')} className={theme==='dark'?'bp':'bs'} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><I n="moon" s={16}/> Dark</button>
           <button onClick={()=>setTheme('light')} className={theme==='light'?'bp':'bs'} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><I n="sun" s={16}/> Light</button>
         </div>
+      </div>
+      <div className="c">
+        <h4 style={{fontSize:14,fontWeight:600,marginBottom:4}}>Data Source</h4>
+        <p style={{fontSize:12,color:'var(--t2)',marginBottom:10}}>Choose your stock data provider. Yahoo Finance is the default. Alpha Vantage is available as a backup.</p>
+        <div style={{display:'flex',gap:8,marginBottom:12}}>
+          <button onClick={()=>handleSourceChange('yahoo')} className={dataSource==='yahoo'?'bp':'bs'} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:13}}>
+            <I n="trend" s={14}/> Yahoo Finance
+          </button>
+          <button onClick={()=>handleSourceChange('alphavantage')} className={dataSource==='alphavantage'?'bp':'bs'} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:13}}>
+            <I n="spark" s={14}/> Alpha Vantage
+          </button>
+        </div>
+        <div style={{background:'var(--hover)',borderRadius:8,padding:10,marginBottom:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+            <div style={{width:6,height:6,borderRadius:3,background:dataSource==='yahoo'?'var(--grn)':'var(--t3)'}}/>
+            <span style={{fontSize:12,fontWeight:600,color:dataSource==='yahoo'?'var(--t1)':'var(--t3)'}}>Yahoo Finance</span>
+            <span style={{fontSize:10,color:'var(--t3)',marginLeft:'auto'}}>{dataSource==='yahoo'?'Active':'Backup'}</span>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{width:6,height:6,borderRadius:3,background:dataSource==='alphavantage'?'var(--grn)':'var(--t3)'}}/>
+            <span style={{fontSize:12,fontWeight:600,color:dataSource==='alphavantage'?'var(--t1)':'var(--t3)'}}>Alpha Vantage</span>
+            <span style={{fontSize:10,color:'var(--t3)',marginLeft:'auto'}}>{dataSource==='alphavantage'?'Active':'Backup'}</span>
+          </div>
+        </div>
+        <p style={{fontSize:11,color:'var(--t3)'}}>If the active source fails, the app automatically tries the backup.</p>
+      </div>
+      <div className="c">
+        <h4 style={{fontSize:14,fontWeight:600,marginBottom:4}}>Alpha Vantage API Key</h4>
+        <p style={{fontSize:12,color:'var(--t2)',marginBottom:8}}>Required to use Alpha Vantage. Free keys available at <a href="https://www.alphavantage.co/support/#api-key" target="_blank" style={{color:'var(--acc)'}}>alphavantage.co</a> (5 req/min, 500/day).</p>
+        <div style={{display:'flex',gap:8}}>
+          <input type="password" value={avKey} onChange={e=>setAvKey(e.target.value)} placeholder="Enter your Alpha Vantage key" style={{flex:1}}/>
+          <button onClick={handleAvKeySave} className="bp" style={{whiteSpace:'nowrap',minWidth:60}}>{avSaved?'Saved!':'Save'}</button>
+        </div>
+        {avKey && <p style={{fontSize:11,color:'var(--grn)',marginTop:6}}>Key configured. Alpha Vantage is available as {dataSource==='alphavantage'?'primary':'backup'} source.</p>}
       </div>
       <div className="c">
         <h4 style={{fontSize:14,fontWeight:600,marginBottom:4}}>Claude API</h4>
@@ -766,10 +815,10 @@ const SettingsView=({theme,setTheme,budget,setBudget})=>{
       </div>
       <div className="c">
         <h4 style={{fontSize:14,fontWeight:600,marginBottom:8}}>Data</h4>
-        <p style={{fontSize:12,color:'var(--t2)',marginBottom:10}}>Portfolio data is stored in your browser. Stock data comes live from Yahoo Finance.</p>
+        <p style={{fontSize:12,color:'var(--t2)',marginBottom:10}}>Portfolio data is stored in your browser. Stock data source: <span style={{color:'var(--acc)',fontWeight:600}}>{dataSource==='yahoo'?'Yahoo Finance':'Alpha Vantage'}</span></p>
         <button className="bd" onClick={()=>{if(confirm('Reset all data?')){localStorage.clear();location.reload();}}}>Reset All Data</button>
       </div>
-      <p style={{textAlign:'center',fontSize:11,color:'var(--t3)',padding:16}}>AI Portfolio Manager v2.0 — Not financial advice</p>
+      <p style={{textAlign:'center',fontSize:11,color:'var(--t3)',padding:16}}>AI Portfolio Manager v2.1 — Not financial advice</p>
     </div>
   );
 };

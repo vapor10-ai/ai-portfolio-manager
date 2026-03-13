@@ -83,6 +83,130 @@ class YahooClient {
 
 const yahoo = new YahooClient();
 
+// ─── Alpha Vantage Client (Backup) ───
+class AlphaVantageClient {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+  }
+
+  async fetch(params) {
+    const qs = new URLSearchParams({ ...params, apikey: this.apiKey }).toString();
+    const res = await fetch(`https://www.alphavantage.co/query?${qs}`);
+    if (!res.ok) throw new Error(`Alpha Vantage ${res.status}`);
+    const data = await res.json();
+    if (data['Error Message']) throw new Error(data['Error Message']);
+    if (data['Note']) throw new Error('Alpha Vantage rate limit hit');
+    return data;
+  }
+
+  async quote(symbol) {
+    const data = await this.fetch({ function: 'GLOBAL_QUOTE', symbol });
+    const q = data['Global Quote'];
+    if (!q || !q['05. price']) return null;
+    return {
+      symbol: q['01. symbol'],
+      name: symbol,
+      price: parseFloat(q['05. price']),
+      change: parseFloat(q['09. change']),
+      changePct: parseFloat(q['10. change percent']?.replace('%', '')),
+      open: parseFloat(q['02. open']),
+      high: parseFloat(q['03. high']),
+      low: parseFloat(q['04. low']),
+      prevClose: parseFloat(q['08. previous close']),
+      volume: parseInt(q['06. volume']),
+    };
+  }
+
+  async search(query) {
+    const data = await this.fetch({ function: 'SYMBOL_SEARCH', keywords: query });
+    return (data.bestMatches || []).filter(m =>
+      m['3. type'] === 'Equity' || m['3. type'] === 'ETF'
+    ).slice(0, 12).map(m => ({
+      symbol: m['1. symbol'],
+      name: m['2. name'],
+      exchange: m['4. region'] || '',
+      type: m['3. type'] || 'Equity',
+    }));
+  }
+
+  async chart(symbol, range = '1mo') {
+    // Map range to AV function
+    const isIntraday = range === '1d' || range === '5d';
+    let data;
+    if (isIntraday) {
+      data = await this.fetch({ function: 'TIME_SERIES_INTRADAY', symbol, interval: '15min', outputsize: range === '1d' ? 'compact' : 'full' });
+      const ts = data['Time Series (15min)'] || {};
+      return Object.entries(ts).slice(0, range === '1d' ? 30 : 150).reverse().map(([date, v]) => ({
+        date, open: parseFloat(v['1. open']), high: parseFloat(v['2. high']),
+        low: parseFloat(v['3. low']), close: parseFloat(v['4. close']), volume: parseInt(v['5. volume']),
+      }));
+    } else {
+      data = await this.fetch({ function: 'TIME_SERIES_DAILY', symbol, outputsize: 'compact' });
+      const ts = data['Time Series (Daily)'] || {};
+      const limitMap = { '1mo': 22, '3mo': 66, '6mo': 132, '1y': 252, '5y': 1260 };
+      return Object.entries(ts).slice(0, limitMap[range] || 22).reverse().map(([date, v]) => ({
+        date, open: parseFloat(v['1. open']), high: parseFloat(v['2. high']),
+        low: parseFloat(v['3. low']), close: parseFloat(v['4. close']), volume: parseInt(v['5. volume']),
+      }));
+    }
+  }
+
+  async financials(symbol) {
+    const data = await this.fetch({ function: 'OVERVIEW', symbol });
+    if (!data.Symbol) return {};
+    return {
+      symbol: data.Symbol,
+      pe: parseFloat(data.TrailingPE) || null,
+      fwdPe: parseFloat(data.ForwardPE) || null,
+      peg: parseFloat(data.PEGRatio) || null,
+      priceToBook: parseFloat(data.PriceToBookRatio) || null,
+      divYield: parseFloat(data.DividendYield) ? parseFloat(data.DividendYield) * 100 : 0,
+      beta: parseFloat(data.Beta) || null,
+      profitMargin: parseFloat(data.ProfitMargin) || null,
+      operatingMargin: parseFloat(data.OperatingMarginTTM) || null,
+      returnOnEquity: parseFloat(data.ReturnOnEquityTTM) || null,
+      returnOnAssets: parseFloat(data.ReturnOnAssetsTTM) || null,
+      revenueGrowth: parseFloat(data.QuarterlyRevenueGrowthYOY) ? parseFloat(data.QuarterlyRevenueGrowthYOY) * 100 : null,
+      earningsGrowth: parseFloat(data.QuarterlyEarningsGrowthYOY) ? parseFloat(data.QuarterlyEarningsGrowthYOY) * 100 : null,
+      targetMeanPrice: parseFloat(data.AnalystTargetPrice) || null,
+      totalRevenue: parseFloat(data.RevenueTTM) || null,
+      marketCap: parseFloat(data.MarketCapitalization) || null,
+    };
+  }
+}
+
+// Helper: get the right data client based on request header or env
+function getClient(req) {
+  const source = req.headers['x-data-source'] || 'yahoo';
+  const avKey = req.headers['x-av-key'] || process.env.ALPHA_VANTAGE_KEY || '';
+  if (source === 'alphavantage' && avKey) {
+    return { client: new AlphaVantageClient(avKey), source: 'alphavantage' };
+  }
+  return { client: yahoo, source: 'yahoo' };
+}
+
+// Helper: try primary, fallback to other
+async function withFallback(req, yahooFn, avFn) {
+  const { client, source } = getClient(req);
+  try {
+    if (source === 'alphavantage') return await avFn(client);
+    return await yahooFn(yahoo);
+  } catch (primaryErr) {
+    console.warn(`${source} failed:`, primaryErr.message, '- trying fallback');
+    try {
+      const avKey = req.headers['x-av-key'] || process.env.ALPHA_VANTAGE_KEY || '';
+      if (source === 'yahoo' && avKey) {
+        return await avFn(new AlphaVantageClient(avKey));
+      } else if (source === 'alphavantage') {
+        return await yahooFn(yahoo);
+      }
+    } catch (fallbackErr) {
+      console.error('Fallback also failed:', fallbackErr.message);
+    }
+    throw primaryErr;
+  }
+}
+
 // ─── Claude API ───
 async function callClaude(apiKey, messages, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -116,21 +240,33 @@ function cached(key, ttlMs, fn) {
 app.get('/api/quote/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
-    const q = await cached(`q_${symbol}`, 30000, () => yahoo.quote(symbol));
-    if (!q) return res.status(404).json({ error: 'Symbol not found' });
-    res.json({
-      symbol: q.symbol, name: q.shortName || q.longName || symbol,
-      price: q.regularMarketPrice, change: q.regularMarketChange,
-      changePct: q.regularMarketChangePercent,
-      open: q.regularMarketOpen, high: q.regularMarketDayHigh,
-      low: q.regularMarketDayLow, prevClose: q.regularMarketPreviousClose,
-      volume: q.regularMarketVolume, mktCap: q.marketCap,
-      pe: q.trailingPE, fwdPe: q.forwardPE, eps: q.epsTrailingTwelveMonths,
-      divYield: q.trailingAnnualDividendYield ? q.trailingAnnualDividendYield * 100 : 0,
-      beta: q.beta, high52: q.fiftyTwoWeekHigh, low52: q.fiftyTwoWeekLow,
-      avg50: q.fiftyDayAverage, avg200: q.twoHundredDayAverage,
-      exchange: q.exchange, currency: q.currency, marketState: q.marketState,
-    });
+    const { source } = getClient(req);
+    const cacheKey = `q_${symbol}_${source}`;
+    const result = await cached(cacheKey, 30000, () => withFallback(req,
+      async (yc) => {
+        const q = await yc.quote(symbol);
+        if (!q) throw new Error('Symbol not found');
+        return {
+          symbol: q.symbol, name: q.shortName || q.longName || symbol,
+          price: q.regularMarketPrice, change: q.regularMarketChange,
+          changePct: q.regularMarketChangePercent,
+          open: q.regularMarketOpen, high: q.regularMarketDayHigh,
+          low: q.regularMarketDayLow, prevClose: q.regularMarketPreviousClose,
+          volume: q.regularMarketVolume, mktCap: q.marketCap,
+          pe: q.trailingPE, fwdPe: q.forwardPE, eps: q.epsTrailingTwelveMonths,
+          divYield: q.trailingAnnualDividendYield ? q.trailingAnnualDividendYield * 100 : 0,
+          beta: q.beta, high52: q.fiftyTwoWeekHigh, low52: q.fiftyTwoWeekLow,
+          avg50: q.fiftyDayAverage, avg200: q.twoHundredDayAverage,
+          exchange: q.exchange, currency: q.currency, marketState: q.marketState,
+        };
+      },
+      async (av) => {
+        const q = await av.quote(symbol);
+        if (!q) throw new Error('Symbol not found');
+        return q;
+      }
+    ));
+    res.json(result);
   } catch (e) {
     console.error('Quote error:', e.message);
     res.status(500).json({ error: e.message });
@@ -162,15 +298,19 @@ app.get('/api/search', async (req, res) => {
   try {
     const query = req.query.q || '';
     if (query.length < 1) return res.json([]);
-    const results = await cached(`s_${query}`, 300000, () => yahoo.search(query));
-    res.json(results.filter(q =>
-      q.quoteType === 'EQUITY' || q.quoteType === 'ETF'
-    ).slice(0, 12).map(q => ({
-      symbol: q.symbol,
-      name: q.shortname || q.longname || q.symbol,
-      exchange: q.exchDisp || q.exchange || '',
-      type: q.quoteType || 'Equity',
-    })));
+    const { source } = getClient(req);
+    const results = await cached(`s_${query}_${source}`, 300000, () => withFallback(req,
+      async (yc) => {
+        const r = await yc.search(query);
+        return r.filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF')
+          .slice(0, 12).map(q => ({
+            symbol: q.symbol, name: q.shortname || q.longname || q.symbol,
+            exchange: q.exchDisp || q.exchange || '', type: q.quoteType || 'Equity',
+          }));
+      },
+      async (av) => av.search(query)
+    ));
+    res.json(results);
   } catch (e) {
     console.error('Search error:', e.message);
     res.status(500).json({ error: e.message });
@@ -181,26 +321,33 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/financials/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
-    const data = await cached(`f_${symbol}`, 300000, () => yahoo.financials(symbol));
-    const sd = data.summaryDetail || {};
-    const ks = data.defaultKeyStatistics || {};
-    const fd = data.financialData || {};
-    const raw = (o) => o?.raw ?? o ?? null;
-    res.json({
-      symbol, pe: raw(sd.trailingPE), fwdPe: raw(sd.forwardPE), peg: raw(ks.pegRatio),
-      priceToBook: raw(sd.priceToBook),
-      divYield: sd.dividendYield?.raw ? sd.dividendYield.raw * 100 : 0,
-      beta: raw(sd.beta), profitMargin: raw(fd.profitMargins),
-      operatingMargin: raw(fd.operatingMargins), returnOnEquity: raw(fd.returnOnEquity),
-      returnOnAssets: raw(fd.returnOnAssets),
-      revenueGrowth: fd.revenueGrowth?.raw ? fd.revenueGrowth.raw * 100 : null,
-      earningsGrowth: fd.earningsGrowth?.raw ? fd.earningsGrowth.raw * 100 : null,
-      debtToEquity: raw(fd.debtToEquity), currentRatio: raw(fd.currentRatio),
-      totalRevenue: raw(fd.totalRevenue), targetMeanPrice: raw(fd.targetMeanPrice),
-      recommendationKey: fd.recommendationKey,
-      numberOfAnalysts: raw(fd.numberOfAnalystOpinions),
-      freeCashflow: raw(fd.freeCashflow),
-    });
+    const { source } = getClient(req);
+    const result = await cached(`f_${symbol}_${source}`, 300000, () => withFallback(req,
+      async (yc) => {
+        const data = await yc.financials(symbol);
+        const sd = data.summaryDetail || {};
+        const ks = data.defaultKeyStatistics || {};
+        const fd = data.financialData || {};
+        const raw = (o) => o?.raw ?? o ?? null;
+        return {
+          symbol, pe: raw(sd.trailingPE), fwdPe: raw(sd.forwardPE), peg: raw(ks.pegRatio),
+          priceToBook: raw(sd.priceToBook),
+          divYield: sd.dividendYield?.raw ? sd.dividendYield.raw * 100 : 0,
+          beta: raw(sd.beta), profitMargin: raw(fd.profitMargins),
+          operatingMargin: raw(fd.operatingMargins), returnOnEquity: raw(fd.returnOnEquity),
+          returnOnAssets: raw(fd.returnOnAssets),
+          revenueGrowth: fd.revenueGrowth?.raw ? fd.revenueGrowth.raw * 100 : null,
+          earningsGrowth: fd.earningsGrowth?.raw ? fd.earningsGrowth.raw * 100 : null,
+          debtToEquity: raw(fd.debtToEquity), currentRatio: raw(fd.currentRatio),
+          totalRevenue: raw(fd.totalRevenue), targetMeanPrice: raw(fd.targetMeanPrice),
+          recommendationKey: fd.recommendationKey,
+          numberOfAnalysts: raw(fd.numberOfAnalystOpinions),
+          freeCashflow: raw(fd.freeCashflow),
+        };
+      },
+      async (av) => av.financials(symbol)
+    ));
+    res.json(result);
   } catch (e) {
     console.error('Financials error:', e.message);
     res.status(500).json({ error: e.message });
@@ -212,8 +359,12 @@ app.get('/api/history/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const range = req.query.range || '1mo';
+    const { source } = getClient(req);
     const imap = { '1d':'5m','5d':'15m','1mo':'1d','3mo':'1d','6mo':'1d','1y':'1wk','5y':'1mo' };
-    const data = await cached(`h_${symbol}_${range}`, 60000, () => yahoo.chart(symbol, range, imap[range] || '1d'));
+    const data = await cached(`h_${symbol}_${range}_${source}`, 60000, () => withFallback(req,
+      async (yc) => yc.chart(symbol, range, imap[range] || '1d'),
+      async (av) => av.chart(symbol, range)
+    ));
     res.json(data);
   } catch (e) {
     console.error('History error:', e.message);
@@ -308,6 +459,16 @@ app.post('/api/scan', async (req, res) => {
     console.error('Scan error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ─── Data Source Status ───
+app.get('/api/datasource', (req, res) => {
+  const avKey = process.env.ALPHA_VANTAGE_KEY || '';
+  res.json({
+    yahoo: true,
+    alphavantage: !!avKey,
+    avKeySet: avKey ? 'server' : 'none',
+  });
 });
 
 // ─── Fallback ───
