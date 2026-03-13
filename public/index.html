@@ -31,9 +31,10 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 .fi{animation:fi .3s ease}@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes spin{to{transform:rotate(360deg)}}
 .sp{width:20px;height:20px;border:2px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
-.mo{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:1000;padding:0;backdrop-filter:blur(4px)}
-.mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:600px;max-height:88vh;overflow-y:auto}
+.mo{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:1000;padding:0;backdrop-filter:blur(4px);overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.mc{background:var(--card);border:1px solid var(--brd);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:600px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 @media(min-width:600px){.mo{align-items:center;padding:20px}.mc{border-radius:16px;max-height:85vh}}
+body.modal-open{overflow:hidden;position:fixed;width:100%;touch-action:none}
 .pb{height:6px;background:var(--hover);border-radius:3px;overflow:hidden}
 .pf{height:100%;border-radius:3px;transition:width .5s ease}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -53,6 +54,12 @@ canvas{max-width:100%}
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useMemo} = React;
 
+// ─── Storage ───
+const S = {
+  g: (k,d) => { try{const v=localStorage.getItem('pm2_'+k);return v?JSON.parse(v):d}catch{return d} },
+  s: (k,v) => { try{localStorage.setItem('pm2_'+k,JSON.stringify(v))}catch{} },
+};
+
 // ─── API Client ───
 function getDataHeaders() {
   const src = S.g('dataSource', 'yahoo');
@@ -65,12 +72,6 @@ function getDataHeaders() {
 const api = {
   get: async (url) => { const r = await fetch(url, {headers: getDataHeaders()}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||r.statusText); return r.json(); },
   post: async (url, body) => { const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json', ...getDataHeaders()},body:JSON.stringify(body)}); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||r.statusText); return r.json(); },
-};
-
-// ─── Storage ───
-const S = {
-  g: (k,d) => { try{const v=localStorage.getItem('pm2_'+k);return v?JSON.parse(v):d}catch{return d} },
-  s: (k,v) => { try{localStorage.setItem('pm2_'+k,JSON.stringify(v))}catch{} },
 };
 
 // ─── Formatting ───
@@ -90,12 +91,17 @@ const I=({n,s=20,c='currentColor'})=>{const p={home:<path d="M3 9l9-7 9 7v11a2 2
 return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{p[n]}</svg>;};
 
 // ─── Chart ───
+function getTooltipColors(){
+  const s=getComputedStyle(document.documentElement);
+  return{backgroundColor:s.getPropertyValue('--card').trim()||'#1a2035',titleColor:s.getPropertyValue('--t1').trim()||'#e8eaed',bodyColor:s.getPropertyValue('--t2').trim()||'#8b95a8',borderColor:s.getPropertyValue('--brd').trim()||'#1e2538'};
+}
 const LineChart=({data,labels,color='#00d4aa',height=160})=>{
   const ref=useRef(null),chart=useRef(null);
   useEffect(()=>{
     if(chart.current)chart.current.destroy();
     if(!ref.current||!data?.length)return;
-    chart.current=new Chart(ref.current,{type:'line',data:{labels,datasets:[{data,borderColor:color,backgroundColor:color+'20',fill:true,tension:.4,pointRadius:0,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,backgroundColor:'#1a2035',titleColor:'#e8eaed',bodyColor:'#8b95a8',borderColor:'#1e2538',borderWidth:1,cornerRadius:8}},scales:{x:{display:false},y:{display:false}},interaction:{mode:'nearest',intersect:false}}});
+    const tc=getTooltipColors();
+    chart.current=new Chart(ref.current,{type:'line',data:{labels,datasets:[{data,borderColor:color,backgroundColor:color+'20',fill:true,tension:.4,pointRadius:0,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,...tc,borderWidth:1,cornerRadius:8}},scales:{x:{display:false},y:{display:false}},interaction:{mode:'nearest',intersect:false}}});
     return()=>{if(chart.current)chart.current.destroy()};
   },[data,labels,color]);
   return <div style={{height}}><canvas ref={ref}/></div>;
@@ -105,18 +111,35 @@ const Doughnut=({data,labels,colors,size=160})=>{
   useEffect(()=>{
     if(chart.current)chart.current.destroy();
     if(!ref.current||!data?.length)return;
-    chart.current=new Chart(ref.current,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:true,cutout:'68%',plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a2035',titleColor:'#e8eaed',bodyColor:'#8b95a8',borderColor:'#1e2538',borderWidth:1,cornerRadius:8,callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed.toFixed(1)}%`}}}}});
+    const tc=getTooltipColors();
+    chart.current=new Chart(ref.current,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:true,cutout:'68%',plugins:{legend:{display:false},tooltip:{...tc,borderWidth:1,cornerRadius:8,callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed.toFixed(1)}%`}}}}});
     return()=>{if(chart.current)chart.current.destroy()};
   },[data,labels,colors]);
   return <canvas ref={ref} style={{maxWidth:size,maxHeight:size,margin:'0 auto',display:'block'}}/>;
 };
 
+// ─── Body Scroll Lock ───
+function useBodyScrollLock(){
+  useEffect(()=>{
+    const sy=window.scrollY;
+    document.body.classList.add('modal-open');
+    document.body.style.top=`-${sy}px`;
+    return()=>{
+      document.body.classList.remove('modal-open');
+      document.body.style.top='';
+      window.scrollTo(0,sy);
+    };
+  },[]);
+}
+
 // ─── Ticker Search Modal ───
 const SearchModal=({onClose,onSelect})=>{
+  useBodyScrollLock();
   const [q,setQ]=useState('');
   const [results,setResults]=useState([]);
   const [loading,setLoading]=useState(false);
   const [trending,setTrending]=useState([]);
+  const [searchErr,setSearchErr]=useState(null);
   const timer=useRef(null);
 
   useEffect(()=>{api.get('/api/trending').then(setTrending).catch(()=>{});},[]);
@@ -125,8 +148,8 @@ const SearchModal=({onClose,onSelect})=>{
     if(timer.current)clearTimeout(timer.current);
     if(q.length<1){setResults([]);return;}
     timer.current=setTimeout(async()=>{
-      setLoading(true);
-      try{const r=await api.get(`/api/search?q=${encodeURIComponent(q)}`);setResults(r);}catch{}
+      setLoading(true);setSearchErr(null);
+      try{const r=await api.get(`/api/search?q=${encodeURIComponent(q)}`);setResults(r);}catch(e){setSearchErr(e.message);setResults([]);}
       setLoading(false);
     },300);
   },[q]);
@@ -149,6 +172,10 @@ const SearchModal=({onClose,onSelect})=>{
               <div style={{fontSize:11,color:'var(--t3)'}}>{r.exchange} · {r.type}</div>
             </div>
           ))}</div>
+        ) : searchErr ? (
+          <div style={{textAlign:'center',padding:30,color:'var(--t2)'}}><I n="alert" s={24} c="var(--red)"/><p style={{marginTop:8,fontSize:13}}>{searchErr}</p></div>
+        ) : !loading && q.length > 0 && results.length === 0 ? (
+          <div style={{textAlign:'center',padding:30,color:'var(--t3)'}}><I n="search" s={28} c="var(--t3)"/><p style={{marginTop:8,fontSize:13}}>No results for "{q}"</p><p style={{fontSize:11,marginTop:4}}>Try a different name or ticker symbol</p></div>
         ) : q.length === 0 && trending.length > 0 ? (
           <div>
             <div style={{fontSize:12,color:'var(--t3)',fontWeight:600,marginBottom:12,textTransform:'uppercase',letterSpacing:1}}>Trending Today</div>
@@ -170,15 +197,18 @@ const SearchModal=({onClose,onSelect})=>{
 
 // ─── Stock Detail Modal ───
 const StockDetail=({symbol,onClose})=>{
+  useBodyScrollLock();
   const [quote,setQuote]=useState(null);
   const [fin,setFin]=useState(null);
   const [hist,setHist]=useState(null);
   const [ai,setAi]=useState(null);
   const [aiLoad,setAiLoad]=useState(false);
   const [range,setRange]=useState('1mo');
+  const [error,setError]=useState(null);
 
   useEffect(()=>{
-    api.get(`/api/quote/${symbol}`).then(setQuote).catch(()=>{});
+    setError(null);
+    api.get(`/api/quote/${symbol}`).then(setQuote).catch(e=>setError(e.message));
     api.get(`/api/financials/${symbol}`).then(setFin).catch(()=>{});
   },[symbol]);
 
@@ -200,7 +230,8 @@ const StockDetail=({symbol,onClose})=>{
   return(
     <div className="mo" onClick={onClose}>
       <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh'}}>
-        {!quote ? <div style={{textAlign:'center',padding:40}}><div className="sp"/></div> : <>
+        {error ? <div style={{textAlign:'center',padding:40}}><I n="alert" s={32} c="var(--red)"/><p style={{color:'var(--red)',marginTop:8,fontSize:14,fontWeight:600}}>Failed to load {symbol}</p><p style={{color:'var(--t3)',fontSize:12,marginTop:4}}>{error}</p><button className="bs" onClick={()=>{setError(null);api.get(`/api/quote/${symbol}`).then(setQuote).catch(e=>setError(e.message));}} style={{marginTop:12}}>Retry</button></div>
+        : !quote ? <div style={{textAlign:'center',padding:40}}><div className="sp"/></div> : <>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:4}}>
           <div><h3 style={{fontSize:22,fontWeight:700}}>{symbol}</h3><p style={{fontSize:13,color:'var(--t2)'}}>{quote.name}</p></div>
           <button onClick={onClose} style={{background:'none',color:'var(--t2)',padding:4}}><I n="x" s={22}/></button>
@@ -327,6 +358,12 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
 
   return(
     <div className="fi">
+      {pos.length===0?<div className="c" style={{background:'linear-gradient(135deg,#111827 0%,#1a2540 100%)',textAlign:'center',padding:'30px 20px'}}>
+        <div style={{width:50,height:50,borderRadius:14,background:'linear-gradient(135deg,var(--acc),#42a5f5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,margin:'0 auto 12px'}}>$</div>
+        <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>Welcome to AI Portfolio</h2>
+        <p style={{fontSize:13,color:'var(--t2)',lineHeight:1.5,marginBottom:16}}>Track your stocks, analyze with AI, and monitor risk — all in one place.</p>
+        <button className="bp" onClick={()=>onNav('portfolio')} style={{padding:'12px 28px',fontSize:14}}>Add Your First Stock</button>
+      </div>:
       <div className="c" style={{background:'linear-gradient(135deg,#111827 0%,#1a2540 100%)'}}>
         <div style={{fontSize:11,color:'var(--t3)',letterSpacing:1,textTransform:'uppercase'}}>Portfolio Value</div>
         <div style={{fontSize:34,fontWeight:700,marginTop:4,marginBottom:4}}>{F.$(tv)}</div>
@@ -340,7 +377,7 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
           </div>
           <div className="pb"><div className="pf" style={{width:Math.min(100,(ti/budget.total)*100)+'%',background:ti>budget.total?'var(--red)':'var(--acc)'}}/></div>
         </div>}
-      </div>
+      </div>}
 
       {/* Health */}
       <div className="c" style={{display:'flex',alignItems:'center',gap:14}}>
@@ -405,6 +442,16 @@ const PortfolioView=({pos,setPos,onStock})=>{
   const [adding,setAdding]=useState(null);
   const [shares,setShares]=useState('');
   const [buyP,setBuyP]=useState('');
+  const [editing,setEditing]=useState(null);
+  const [editShares,setEditShares]=useState('');
+  const [editBuyP,setEditBuyP]=useState('');
+
+  const startEdit=(p)=>{setEditing(p);setEditShares(String(p.shares));setEditBuyP(String(p.buyPrice));};
+  const confirmEdit=()=>{
+    if(!editing||!editShares||!editBuyP)return;
+    setPos(pos.map(p=>p.ticker===editing.ticker?{...p,shares:parseFloat(editShares),buyPrice:parseFloat(editBuyP)}:p));
+    setEditing(null);
+  };
   const tv=pos.reduce((s,p)=>s+(p.price*p.shares),0);
   const ti=pos.reduce((s,p)=>s+(p.buyPrice*p.shares),0);
 
@@ -449,7 +496,8 @@ const PortfolioView=({pos,setPos,onStock})=>{
               <div style={{fontWeight:600,fontSize:14}}>{F.$(p.price*p.shares)}</div>
               <div style={{fontSize:12,fontWeight:600,color:plv>=0?'var(--grn)':'var(--red)'}}>{plv>=0?'+':''}{F.$(plv)} ({F.pct(plp)})</div>
             </div>
-            <button onClick={e=>{e.stopPropagation();setPos(pos.filter(x=>x.ticker!==p.ticker));}} style={{background:'none',color:'var(--t3)',marginLeft:6,padding:4}}><I n="trash" s={14}/></button>
+            <button onClick={e=>{e.stopPropagation();startEdit(p);}} style={{background:'none',color:'var(--t3)',padding:10,minWidth:40,minHeight:40,display:'flex',alignItems:'center',justifyContent:'center'}} title="Edit"><I n="settings" s={14}/></button>
+            <button onClick={e=>{e.stopPropagation();if(confirm(`Remove ${p.ticker} (${p.shares} shares) from portfolio?`))setPos(pos.filter(x=>x.ticker!==p.ticker));}} style={{background:'none',color:'var(--t3)',padding:10,minWidth:40,minHeight:40,display:'flex',alignItems:'center',justifyContent:'center'}} title="Delete"><I n="trash" s={16}/></button>
           </div>);
         })}</div>
       }
@@ -463,6 +511,18 @@ const PortfolioView=({pos,setPos,onStock})=>{
             <div><label style={{fontSize:12,color:'var(--t2)',display:'block',marginBottom:4}}>Buy Price ($)</label><input type="number" value={buyP} onChange={e=>setBuyP(e.target.value)} placeholder="150.00"/></div>
           </div>
           <button className="bp" onClick={confirmAdd} style={{width:'100%'}}>Add to Portfolio</button>
+        </div>
+      </div>}
+      {editing&&<div className="mo" onClick={()=>setEditing(null)}>
+        <div className="mc fi" onClick={e=>e.stopPropagation()}>
+          <h3 style={{fontSize:18,fontWeight:700,marginBottom:4}}>Edit {editing.ticker}</h3>
+          <p style={{fontSize:13,color:'var(--t2)',marginBottom:16}}>{editing.name}</p>
+          <div className="g2" style={{marginBottom:16}}>
+            <div><label style={{fontSize:12,color:'var(--t2)',display:'block',marginBottom:4}}>Shares</label><input type="number" value={editShares} onChange={e=>setEditShares(e.target.value)} placeholder="10" autoFocus/></div>
+            <div><label style={{fontSize:12,color:'var(--t2)',display:'block',marginBottom:4}}>Avg Buy Price ($)</label><input type="number" value={editBuyP} onChange={e=>setEditBuyP(e.target.value)} placeholder="150.00"/></div>
+          </div>
+          <button className="bp" onClick={confirmEdit} style={{width:'100%',marginBottom:8}}>Save Changes</button>
+          <button className="bs" onClick={()=>setEditing(null)} style={{width:'100%'}}>Cancel</button>
         </div>
       </div>}
     </div>
@@ -504,14 +564,19 @@ const WatchlistView=({wl,setWl,onStock})=>{
     if(activeList>=u.length)setActiveList(u.length-1);
   };
 
-  // Fetch live prices for current list
+  // Fetch live prices for current list (auto-refresh every 30s)
   const [prices,setPrices]=useState({});
   useEffect(()=>{
     if(!wl[activeList]?.items.length)return;
-    const syms=wl[activeList].items.map(i=>i.symbol).join(',');
-    api.get(`/api/quotes?symbols=${syms}`).then(data=>{
-      const m={};data.forEach(q=>{m[q.symbol]=q;});setPrices(m);
-    }).catch(()=>{});
+    const fetchPrices=()=>{
+      const syms=wl[activeList].items.map(i=>i.symbol).join(',');
+      api.get(`/api/quotes?symbols=${syms}`).then(data=>{
+        const m={};data.forEach(q=>{m[q.symbol]=q;});setPrices(m);
+      }).catch(()=>{});
+    };
+    fetchPrices();
+    const iv=setInterval(fetchPrices,30000);
+    return()=>clearInterval(iv);
   },[wl,activeList]);
 
   const list=wl[activeList];
@@ -558,12 +623,12 @@ const WatchlistView=({wl,setWl,onStock})=>{
               <div style={{fontSize:12,fontWeight:600,color:q.changePct>=0?'var(--grn)':'var(--red)'}}>{F.pct(q.changePct)}</div></>
               :<div className="sp" style={{width:14,height:14}}/>}
             </div>
-            <button onClick={e=>{e.stopPropagation();removeFromList(item.symbol);}} style={{background:'none',color:'var(--t3)',marginLeft:6,padding:4}}><I n="trash" s={14}/></button>
+            <button onClick={e=>{e.stopPropagation();if(confirm(`Remove ${item.symbol} from watchlist?`))removeFromList(item.symbol);}} style={{background:'none',color:'var(--t3)',marginLeft:6,padding:10,minWidth:40,minHeight:40,display:'flex',alignItems:'center',justifyContent:'center'}}><I n="trash" s={16}/></button>
           </div>);
         })}</div>
       }
 
-      {wl.length>1&&<button className="bd" onClick={()=>deleteList(activeList)} style={{marginTop:8,width:'100%'}}>Delete "{list?.name}" List</button>}
+      {wl.length>1&&<button className="bd" onClick={()=>{if(confirm(`Delete "${list?.name}" watchlist and all its items?`))deleteList(activeList);}} style={{marginTop:8,width:'100%'}}>Delete "{list?.name}" List</button>}
 
       {showSearch&&<SearchModal onClose={()=>setShowSearch(false)} onSelect={addToList}/>}
       {showNewList&&<div className="mo" onClick={()=>setShowNewList(false)}>
@@ -597,9 +662,10 @@ const ScannerView=({pos})=>{
     setLoading(false);
   };
 
+  const [scrErr,setScrErr]=useState(null);
   const loadScreener=async(type)=>{
-    setScrType(type);setScrLoad(true);
-    try{const data=await api.get(`/api/screener/${type}`);setScreener(data);}catch{}
+    setScrType(type);setScrLoad(true);setScrErr(null);
+    try{const data=await api.get(`/api/screener/${type}`);setScreener(data);}catch(e){setScrErr(e.message);}
     setScrLoad(false);
   };
 
@@ -666,6 +732,7 @@ const ScannerView=({pos})=>{
           )}
         </div>
         {scrLoad?<div style={{textAlign:'center',padding:40}}><div className="sp"/></div>:
+          scrErr?<div className="c" style={{textAlign:'center',padding:30}}><I n="alert" s={28} c="var(--red)"/><p style={{color:'var(--t2)',marginTop:8,fontSize:13}}>{scrErr}</p><button className="bs" onClick={()=>loadScreener(scrType)} style={{marginTop:10}}>Retry</button></div>:
           <div className="c">{screener.map(s=>
             <div key={s.symbol} className="sr" onClick={()=>setSelectedStock(s.symbol)}>
               <div style={{flex:1}}>
@@ -750,7 +817,7 @@ const SettingsView=({theme,setTheme,budget,setBudget})=>{
   const [avKey,setAvKey]=useState(S.g('avKey',''));
   const [avSaved,setAvSaved]=useState(false);
 
-  const handleSourceChange=(src)=>{setDataSource(src);S.s('dataSource',src);cache&&cache.clear&&cache.clear();};
+  const handleSourceChange=(src)=>{setDataSource(src);S.s('dataSource',src);};
   const handleAvKeySave=()=>{S.s('avKey',avKey);setAvSaved(true);setTimeout(()=>setAvSaved(false),2000);};
 
   return(
@@ -842,6 +909,7 @@ const App=()=>{
   useEffect(()=>{document.documentElement.setAttribute('data-theme',theme);},[]);
 
   // Auto-refresh prices every 30s
+  const [refreshErr,setRefreshErr]=useState(null);
   useEffect(()=>{
     if(!pos.length)return;
     const refresh=async()=>{
@@ -853,7 +921,8 @@ const App=()=>{
           const q=priceMap[p.ticker];
           return q?{...p,price:q.price,beta:q.beta}:p;
         }));
-      }catch{}
+        setRefreshErr(null);
+      }catch(e){setRefreshErr(e.message);}
     };
     refresh();
     const iv=setInterval(refresh,30000);
@@ -880,6 +949,12 @@ const App=()=>{
         </div>
         <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{background:'none',color:'var(--t2)',padding:4}}><I n={theme==='dark'?'sun':'moon'} s={20}/></button>
       </div>
+
+      {/* Error banner */}
+      {refreshErr&&<div style={{background:'rgba(255,71,87,.1)',padding:'6px 16px',fontSize:12,color:'var(--red)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span>Data refresh failed: {refreshErr}</span>
+        <button onClick={()=>setRefreshErr(null)} style={{background:'none',color:'var(--red)',padding:4,fontSize:16,fontWeight:700}}>&times;</button>
+      </div>}
 
       {/* Content */}
       <div style={{padding:16,maxWidth:600,margin:'0 auto'}}>
