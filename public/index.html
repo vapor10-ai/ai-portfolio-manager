@@ -176,14 +176,18 @@ const NewsCard=({item})=>(
 );
 
 // ─── News Feed ───
-const NewsFeed=({symbol})=>{
+const NewsFeed=({symbol,query})=>{
   const [news,setNews]=useState([]);
   const [loading,setLoading]=useState(true);
+  const fetchKey=symbol||query||'general';
   useEffect(()=>{
     setLoading(true);
-    const url=symbol?`/api/news/${symbol}`:'/api/news';
+    let url;
+    if(symbol)url=`/api/news/${symbol}`;
+    else if(query)url=`/api/news?q=${encodeURIComponent(query)}`;
+    else url='/api/news';
     api.get(url).then(n=>{setNews(n);setLoading(false);}).catch(()=>setLoading(false));
-  },[symbol]);
+  },[fetchKey]);
   if(loading)return <div style={{textAlign:'center',padding:20}}><div className="sp"/></div>;
   if(!news.length)return <p style={{fontSize:12,color:'var(--t3)',textAlign:'center',padding:16}}>No news available</p>;
   return <div>{news.map((n,i)=><NewsCard key={i} item={n}/>)}</div>;
@@ -420,6 +424,31 @@ const StockDetailInner=({symbol,onClose})=>{
 const StockDetail=({symbol,onClose})=>React.createElement(ErrorBound,{onClose},React.createElement(StockDetailInner,{symbol,onClose}));
 
 // ─── Dashboard ───
+const SECTORS=[
+  {label:'All',query:''},
+  {label:'Tech',query:'technology stocks'},
+  {label:'Finance',query:'financial markets banking'},
+  {label:'Health',query:'healthcare pharma stocks'},
+  {label:'Energy',query:'energy oil gas stocks'},
+  {label:'Crypto',query:'cryptocurrency bitcoin'},
+  {label:'AI',query:'artificial intelligence stocks'},
+];
+const SectorNewsTabs=()=>{
+  const [sel,setSel]=useState(0);
+  return(<div>
+    <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,WebkitOverflowScrolling:'touch'}}>
+      {SECTORS.map((s,i)=>(
+        <button key={s.label} onClick={()=>setSel(i)} style={{
+          padding:'5px 12px',borderRadius:20,border:'none',fontSize:12,fontWeight:600,whiteSpace:'nowrap',
+          background:sel===i?'var(--blu)':'var(--c2)',color:sel===i?'#fff':'var(--t2)',cursor:'pointer',
+          transition:'all .2s',flexShrink:0
+        }}>{s.label}</button>
+      ))}
+    </div>
+    <NewsFeed query={SECTORS[sel].query||undefined}/>
+  </div>);
+};
+
 const Dashboard=({pos,wl,budget,onNav,onStock})=>{
   const tv=pos.reduce((s,p)=>s+(p.price*p.shares),0);
   const ti=pos.reduce((s,p)=>s+(p.buyPrice*p.shares),0);
@@ -528,7 +557,7 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
         <h4 style={{fontSize:14,fontWeight:600,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
           <I n="news" s={16} c="var(--blu)"/> Market News
         </h4>
-        <NewsFeed/>
+        <SectorNewsTabs/>
       </div>
     </div>
   );
