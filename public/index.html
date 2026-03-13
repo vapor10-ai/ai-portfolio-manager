@@ -286,6 +286,89 @@ class ErrorBound extends React.Component{
 }
 
 // ─── Stock Detail Modal ───
+// ─── Options Chain Component ───
+const OptionsChain=({symbol,stockPrice})=>{
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [expIdx,setExpIdx]=useState(0);
+  const [tab,setTab]=useState('calls');
+  const [expanded,setExpanded]=useState(false);
+
+  const loadOptions=(date)=>{
+    setLoading(true);
+    const url=date?`/api/options/${symbol}?date=${date}`:`/api/options/${symbol}`;
+    api.get(url).then(d=>{setData(d);setLoading(false);}).catch(()=>setLoading(false));
+  };
+
+  useEffect(()=>{if(expanded&&!data)loadOptions();},[expanded]);
+
+  const selectExp=(idx)=>{
+    setExpIdx(idx);
+    if(data?.expirations[idx])loadOptions(data.expirations[idx].timestamp);
+  };
+
+  const opts=tab==='calls'?data?.calls:data?.puts;
+  const price=data?.underlying?.price||stockPrice;
+
+  return(
+    <div className="c">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick={()=>setExpanded(!expanded)}>
+        <h4 style={{fontSize:14,fontWeight:600,display:'flex',alignItems:'center',gap:6}}>Options Chain</h4>
+        <span style={{fontSize:12,color:'var(--t3)'}}>{expanded?'▲':'▼'}</span>
+      </div>
+      {expanded&&<div style={{marginTop:12}}>
+        {loading&&!data?<div style={{textAlign:'center',padding:20}}><div className="sp"/></div>:<>
+          {/* Expiration selector */}
+          {data?.expirations?.length>0&&<div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:10,paddingBottom:4}}>
+            {data.expirations.slice(0,8).map((e,i)=>(
+              <button key={e.timestamp} onClick={()=>selectExp(i)} style={{
+                padding:'4px 10px',borderRadius:6,fontSize:10,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
+                background:expIdx===i?'var(--blu)':'var(--hover)',color:expIdx===i?'#fff':'var(--t2)'
+              }}>{e.date}</button>
+            ))}
+          </div>}
+          {/* Calls/Puts toggle */}
+          <div style={{display:'flex',gap:4,marginBottom:10}}>
+            <button onClick={()=>setTab('calls')} style={{flex:1,padding:'6px 0',borderRadius:8,fontSize:12,fontWeight:700,
+              background:tab==='calls'?'rgba(0,212,170,.15)':'var(--hover)',color:tab==='calls'?'var(--grn)':'var(--t2)',
+              border:tab==='calls'?'1px solid var(--grn)':'1px solid transparent'
+            }}>Calls</button>
+            <button onClick={()=>setTab('puts')} style={{flex:1,padding:'6px 0',borderRadius:8,fontSize:12,fontWeight:700,
+              background:tab==='puts'?'rgba(255,71,87,.15)':'var(--hover)',color:tab==='puts'?'var(--red)':'var(--t2)',
+              border:tab==='puts'?'1px solid var(--red)':'1px solid transparent'
+            }}>Puts</button>
+          </div>
+          {loading&&<div style={{textAlign:'center',padding:10}}><div className="sp"/></div>}
+          {opts&&opts.length>0?<div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+              <thead><tr style={{color:'var(--t3)',borderBottom:'1px solid var(--brd)'}}>
+                <th style={{textAlign:'left',padding:'4px 6px',fontWeight:600}}>Strike</th>
+                <th style={{textAlign:'right',padding:'4px 6px',fontWeight:600}}>Last</th>
+                <th style={{textAlign:'right',padding:'4px 6px',fontWeight:600}}>Bid</th>
+                <th style={{textAlign:'right',padding:'4px 6px',fontWeight:600}}>Ask</th>
+                <th style={{textAlign:'right',padding:'4px 6px',fontWeight:600}}>Vol</th>
+                <th style={{textAlign:'right',padding:'4px 6px',fontWeight:600}}>OI</th>
+                <th style={{textAlign:'right',padding:'4px 6px',fontWeight:600}}>IV</th>
+              </tr></thead>
+              <tbody>{opts.slice(0,20).map((o,i)=>(
+                <tr key={i} style={{borderBottom:'1px solid var(--brd)',background:o.inTheMoney?'rgba(0,212,170,.06)':'transparent'}}>
+                  <td style={{padding:'5px 6px',fontWeight:700,color:o.inTheMoney?'var(--grn)':'var(--t1)'}}>{o.strike?.toFixed(2)}</td>
+                  <td style={{textAlign:'right',padding:'5px 6px'}}>{o.last?.toFixed(2)||'—'}</td>
+                  <td style={{textAlign:'right',padding:'5px 6px',color:'var(--t2)'}}>{o.bid?.toFixed(2)||'—'}</td>
+                  <td style={{textAlign:'right',padding:'5px 6px',color:'var(--t2)'}}>{o.ask?.toFixed(2)||'—'}</td>
+                  <td style={{textAlign:'right',padding:'5px 6px',color:'var(--t2)'}}>{o.volume?.toLocaleString()||'—'}</td>
+                  <td style={{textAlign:'right',padding:'5px 6px',color:'var(--t2)'}}>{o.openInterest?.toLocaleString()||'—'}</td>
+                  <td style={{textAlign:'right',padding:'5px 6px',color:'var(--pur)'}}>{o.impliedVol?(o.impliedVol*100).toFixed(0)+'%':'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>:<div style={{textAlign:'center',padding:16,color:'var(--t3)',fontSize:12}}>No options data available</div>}
+        </>}
+      </div>}
+    </div>
+  );
+};
+
 const StockDetailInner=({symbol,onClose})=>{
   useBodyScrollLock();
   const [quote,setQuote]=useState(null);
@@ -308,6 +391,15 @@ const StockDetailInner=({symbol,onClose})=>{
     api.get(`/api/financials/${symbol}`).then(setFin).catch(()=>{});
     return()=>clearTimeout(timer);
   },[symbol]);
+
+  // Auto-refresh quote every 10s
+  useEffect(()=>{
+    if(!quote)return;
+    const iv=setInterval(()=>{
+      api.get(`/api/quote/${symbol}`).then(q=>{if(q&&q.price!=null)setQuote(q);}).catch(()=>{});
+    },10000);
+    return()=>clearInterval(iv);
+  },[!!quote,symbol]);
 
   useEffect(()=>{
     api.get(`/api/history/${symbol}?range=${range}`).then(setHist).catch(()=>{});
@@ -393,6 +485,9 @@ const StockDetailInner=({symbol,onClose})=>{
             )}
           </div>
         </div>}
+
+        {/* Options Chain */}
+        <OptionsChain symbol={symbol} stockPrice={quote.price}/>
 
         {/* AI Analysis */}
         <div className="c" style={{background:'var(--accd)',border:'1px solid var(--acc)'}}>
@@ -723,7 +818,7 @@ const WatchlistView=({wl,setWl,onStock})=>{
       }).catch(()=>{});
     };
     fetchPrices();
-    const iv=setInterval(fetchPrices,30000);
+    const iv=setInterval(fetchPrices,10000);
     return()=>clearInterval(iv);
   },[wl,activeList]);
 
@@ -1125,7 +1220,7 @@ const App=()=>{
       }catch(e){setRefreshErr(e.message);}
     };
     refresh();
-    const iv=setInterval(refresh,30000);
+    const iv=setInterval(refresh,10000);
     return()=>clearInterval(iv);
   },[pos.length]); // only restart when count changes
 
