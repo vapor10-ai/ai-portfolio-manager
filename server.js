@@ -134,6 +134,32 @@ class YahooClient {
     }));
   }
 
+  async options(symbol, date = null) {
+    const url = date
+      ? `https://query2.finance.yahoo.com/v7/finance/options/${symbol}?date=${date}`
+      : `https://query2.finance.yahoo.com/v7/finance/options/${symbol}`;
+    const data = await this.fetch(url);
+    const result = data?.optionChain?.result?.[0];
+    if (!result) return { expirations: [], calls: [], puts: [], underlying: null };
+    const q = result.quote || {};
+    return {
+      expirations: (result.expirationDates || []).map(ts => ({ timestamp: ts, date: new Date(ts * 1000).toISOString().split('T')[0] })),
+      calls: (result.options?.[0]?.calls || []).map(o => ({
+        strike: o.strike, last: o.lastPrice, bid: o.bid, ask: o.ask,
+        change: o.change, changePct: o.percentChange, volume: o.volume,
+        openInterest: o.openInterest, impliedVol: o.impliedVolatility,
+        inTheMoney: o.inTheMoney, expiration: o.expiration,
+      })),
+      puts: (result.options?.[0]?.puts || []).map(o => ({
+        strike: o.strike, last: o.lastPrice, bid: o.bid, ask: o.ask,
+        change: o.change, changePct: o.percentChange, volume: o.volume,
+        openInterest: o.openInterest, impliedVol: o.impliedVolatility,
+        inTheMoney: o.inTheMoney, expiration: o.expiration,
+      })),
+      underlying: { symbol: q.symbol, price: q.regularMarketPrice },
+    };
+  }
+
   async chart(symbol, range = '1mo', interval = '1d') {
     const data = await this.fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`);
     const result = data?.chart?.result?.[0];
@@ -399,7 +425,7 @@ app.get('/api/quote/:symbol', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const { source } = getClient(req);
     const cacheKey = `q_${symbol}_${source}`;
-    const result = await cached(cacheKey, 30000, () => withFallback(req,
+    const result = await cached(cacheKey, 15000, () => withFallback(req,
       async (yc) => {
         const q = await yc.quote(symbol);
         if (!q) throw new Error('Symbol not found');
@@ -435,7 +461,7 @@ app.get('/api/quotes', async (req, res) => {
   try {
     const symbols = (req.query.symbols || '').split(',').filter(Boolean).map(s => s.trim().toUpperCase());
     if (!symbols.length) return res.json([]);
-    const quotes = await cached(`qs_${symbols.join(',')}`, 30000, () => yahoo.quotes(symbols));
+    const quotes = await cached(`qs_${symbols.join(',')}`, 15000, () => yahoo.quotes(symbols));
     res.json(quotes.map(q => ({
       symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
       price: q.regularMarketPrice, change: q.regularMarketChange,
@@ -456,7 +482,7 @@ app.get('/api/search', async (req, res) => {
     const query = req.query.q || '';
     if (query.length < 1) return res.json([]);
     const { source } = getClient(req);
-    const results = await cached(`s_${query}_${source}`, 300000, () => withFallback(req,
+    const results = await cached(`s_${query}_${source}`, 120000, () => withFallback(req,
       async (yc) => {
         const r = await yc.search(query);
         return r.filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF')
@@ -479,7 +505,7 @@ app.get('/api/financials/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
     const { source } = getClient(req);
-    const result = await cached(`f_${symbol}_${source}`, 300000, () => withFallback(req,
+    const result = await cached(`f_${symbol}_${source}`, 120000, () => withFallback(req,
       async (yc) => {
         const data = await yc.financials(symbol);
         const sd = data.summaryDetail || {};
@@ -518,7 +544,7 @@ app.get('/api/history/:symbol', async (req, res) => {
     const range = req.query.range || '1mo';
     const { source } = getClient(req);
     const imap = { '1d':'5m','5d':'15m','1mo':'1d','3mo':'1d','6mo':'1d','1y':'1wk','5y':'1mo' };
-    const data = await cached(`h_${symbol}_${range}_${source}`, 60000, () => withFallback(req,
+    const data = await cached(`h_${symbol}_${range}_${source}`, 30000, () => withFallback(req,
       async (yc) => yc.chart(symbol, range, imap[range] || '1d'),
       async (av) => av.chart(symbol, range)
     ));
@@ -529,11 +555,25 @@ app.get('/api/history/:symbol', async (req, res) => {
   }
 });
 
+// ─── Options Chain ───
+app.get('/api/options/:symbol', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const date = req.query.date || null;
+    const cacheKey = `opt_${symbol}_${date||'default'}`;
+    const result = await cached(cacheKey, 30000, () => yahoo.options(symbol, date));
+    res.json(result);
+  } catch (e) {
+    console.error('Options error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── News ───
 app.get('/api/news/:symbol', async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
-    const news = await cached(`news_${symbol}`, 300000, () => yahoo.news(symbol, 10));
+    const news = await cached(`news_${symbol}`, 120000, () => yahoo.news(symbol, 10));
     res.json(news);
   } catch (e) {
     console.error('News error:', e.message);
@@ -544,7 +584,7 @@ app.get('/api/news/:symbol', async (req, res) => {
 app.get('/api/news', async (req, res) => {
   try {
     const q = req.query.q || 'stock market today';
-    const news = await cached(`market_news_${q}`, 300000, () => yahoo.news(q, 20));
+    const news = await cached(`market_news_${q}`, 120000, () => yahoo.news(q, 20));
     res.json(news);
   } catch (e) {
     console.error('Market news error:', e.message);
@@ -552,11 +592,38 @@ app.get('/api/news', async (req, res) => {
   }
 });
 
+// ─── Market Indices & Global Markets ───
+app.get('/api/indices', async (req, res) => {
+  try {
+    const indices = [
+      '^GSPC','^DJI','^IXIC','^RUT','^VIX',          // US indices
+      '^TNX','^TYX',                                    // US Treasury yields
+      '^FTSE','^GDAXI','^FCHI','^N225','^HSI','^STI',  // Global indices
+      'GC=F','SI=F','CL=F','NG=F',                      // Commodities (Gold, Silver, Oil, NatGas)
+      'BTC-USD','ETH-USD','SOL-USD',                     // Crypto
+      'EURUSD=X','GBPUSD=X','JPY=X','DX-Y.NYB',        // Forex & Dollar index
+    ];
+    const quotes = await cached('indices', 15000, () => yahoo.quotes(indices));
+    res.json(quotes.map(q => ({
+      symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
+      price: q.regularMarketPrice, change: q.regularMarketChange,
+      changePct: q.regularMarketChangePercent,
+      prevClose: q.regularMarketPreviousClose,
+      marketState: q.marketState,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Trending (popular stocks with live data) ───
 app.get('/api/trending', async (req, res) => {
   try {
-    const popular = ['AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','NFLX','AMD','PLTR','COIN','SOFI','V','DIS'];
-    const quotes = await cached('trending', 60000, () => yahoo.quotes(popular));
+    const popular = [
+      'AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','NFLX','AMD',
+      'PLTR','COIN','SOFI','V','DIS','ARM','SMCI','MSTR','AVGO','CRM',
+    ];
+    const quotes = await cached('trending', 30000, () => yahoo.quotes(popular));
     res.json(quotes.map(q => ({
       symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
       price: q.regularMarketPrice, change: q.regularMarketChange,
@@ -567,18 +634,35 @@ app.get('/api/trending', async (req, res) => {
   }
 });
 
-// ─── Screener ───
+// ─── Screener (expanded universe) ───
 app.get('/api/screener/:type', async (req, res) => {
   try {
     const type = req.params.type;
     const tickers = [
-      'AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','JPM','JNJ','V',
-      'WMT','PG','UNH','MA','HD','DIS','NFLX','PYPL','AMD','INTC',
-      'BA','CRM','COST','KO','PEP','ABBV','MRK','XOM','CVX','LLY',
-      'AVGO','ADBE','ORCL','CSCO','ACN','TXN','QCOM','INTU','AMAT','MU',
-      'SOFI','PLTR','RIVN','SNAP','COIN','SQ','SHOP','ROKU','DKNG','MARA'
+      // Mega cap tech
+      'AAPL','MSFT','GOOGL','AMZN','NVDA','TSLA','META','AVGO','ORCL','CRM',
+      // Finance & payments
+      'JPM','V','MA','GS','BAC','WFC','AXP','BLK','SCHW','PYPL',
+      // Health & pharma
+      'JNJ','UNH','LLY','ABBV','MRK','PFE','TMO','ABT','AMGN','GILD',
+      // Consumer
+      'WMT','PG','COST','KO','PEP','MCD','NKE','SBUX','TGT','HD',
+      // Energy
+      'XOM','CVX','COP','SLB','EOG','OXY','MPC','VLO','PSX','HAL',
+      // Industrials & defense
+      'BA','CAT','GE','HON','RTX','LMT','DE','UPS','FDX','MMM',
+      // Semis & hardware
+      'AMD','INTC','QCOM','TXN','AMAT','MU','LRCX','KLAC','MRVL','ARM',
+      // Software & cloud
+      'ADBE','CSCO','ACN','INTU','NOW','SNOW','DDOG','NET','CRWD','ZS',
+      // High-growth & speculative
+      'SOFI','PLTR','RIVN','SNAP','COIN','SQ','SHOP','ROKU','DKNG','MARA',
+      'SMCI','MSTR','HOOD','RBLX','U','PATH','AFRM','UPST','IONQ','RGTI',
+      // ETFs (major)
+      'SPY','QQQ','DIA','IWM','VTI','ARKK','XLF','XLE','XLV','XLK',
+      'GLD','SLV','TLT','HYG','EEM','VWO','IBIT','ETHE',
     ];
-    const quotes = await cached('screener', 60000, () => yahoo.quotes(tickers));
+    const quotes = await cached('screener', 30000, () => yahoo.quotes(tickers));
     let results = quotes.map(q => ({
       symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
       price: q.regularMarketPrice, change: q.regularMarketChange,

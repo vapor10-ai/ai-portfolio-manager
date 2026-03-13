@@ -537,6 +537,66 @@ const StockDetailInner=({symbol,onClose})=>{
 const StockDetail=({symbol,onClose})=>React.createElement(ErrorBound,{onClose},React.createElement(StockDetailInner,{symbol,onClose}));
 
 // ─── Dashboard ───
+// ─── Market Overview (Indices, Commodities, Crypto, Forex) ───
+const MGROUPS=[
+  {label:'Indices',symbols:['^GSPC','^DJI','^IXIC','^RUT','^VIX']},
+  {label:'Global',symbols:['^FTSE','^GDAXI','^FCHI','^N225','^HSI']},
+  {label:'Commodities',symbols:['GC=F','SI=F','CL=F','NG=F']},
+  {label:'Crypto',symbols:['BTC-USD','ETH-USD','SOL-USD']},
+  {label:'Forex',symbols:['EURUSD=X','GBPUSD=X','JPY=X','DX-Y.NYB']},
+  {label:'Bonds',symbols:['^TNX','^TYX']},
+];
+const MNAMES={'^GSPC':'S&P 500','^DJI':'Dow Jones','^IXIC':'NASDAQ','^RUT':'Russell 2000','^VIX':'VIX','^FTSE':'FTSE 100','^GDAXI':'DAX','^FCHI':'CAC 40','^N225':'Nikkei 225','^HSI':'Hang Seng','GC=F':'Gold','SI=F':'Silver','CL=F':'Crude Oil','NG=F':'Nat Gas','BTC-USD':'Bitcoin','ETH-USD':'Ethereum','SOL-USD':'Solana','EURUSD=X':'EUR/USD','GBPUSD=X':'GBP/USD','JPY=X':'USD/JPY','DX-Y.NYB':'Dollar Index','^TNX':'10Y Treasury','^TYX':'30Y Treasury'};
+
+const MarketOverview=({onStock})=>{
+  const [indices,setIndices]=useState([]);
+  const [grp,setGrp]=useState(0);
+
+  useEffect(()=>{
+    const load=()=>api.get('/api/indices').then(setIndices).catch(()=>{});
+    load();
+    const iv=setInterval(load,15000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  const filtered=indices.filter(q=>MGROUPS[grp].symbols.includes(q.symbol));
+
+  return(
+    <div className="c">
+      <h4 style={{fontSize:14,fontWeight:600,marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
+        <I n="trend" s={16} c="var(--blu)"/> Markets
+        <span className="live" style={{marginLeft:4}}/>
+      </h4>
+      <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:10,paddingBottom:2}}>
+        {MGROUPS.map((g,i)=>(
+          <button key={g.label} onClick={()=>setGrp(i)} style={{
+            padding:'4px 10px',borderRadius:14,fontSize:10,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
+            background:grp===i?'var(--blu)':'var(--hover)',color:grp===i?'#fff':'var(--t3)',transition:'all .2s'
+          }}>{g.label}</button>
+        ))}
+      </div>
+      {filtered.length===0?<div style={{textAlign:'center',padding:12}}><div className="sp"/></div>:
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+          {filtered.map(q=>{
+            const up=(q.changePct||0)>=0;
+            return(
+              <div key={q.symbol} onClick={()=>onStock&&onStock(q.symbol)} style={{
+                background:'var(--hover)',borderRadius:10,padding:'8px 10px',cursor:'pointer'
+              }}>
+                <div style={{fontSize:11,color:'var(--t3)',fontWeight:600,marginBottom:2}}>{MNAMES[q.symbol]||q.name}</div>
+                <div style={{fontSize:16,fontWeight:700}}>{q.price?.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                <div style={{fontSize:12,fontWeight:600,color:up?'var(--grn)':'var(--red)',marginTop:1}}>
+                  {up?'▲':'▼'} {Math.abs(q.changePct||0).toFixed(2)}%
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      }
+    </div>
+  );
+};
+
 // ─── Market Movers ───
 const MarketMovers=({onStock})=>{
   const [data,setData]=useState({gainers:[],losers:[],active:[]});
@@ -694,6 +754,9 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
           </div>
         </div>
       </div>
+
+      {/* Market Overview */}
+      <MarketOverview onStock={onStock}/>
 
       {/* Quick nav */}
       <div className="g2" style={{marginBottom:12}}>
