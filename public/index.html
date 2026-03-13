@@ -538,40 +538,224 @@ const StockDetail=({symbol,onClose})=>React.createElement(ErrorBound,{onClose},R
 
 // ─── Dashboard ───
 // ─── Market Overview (Indices, Commodities, Crypto, Forex) ───
-const MGROUPS=[
-  {label:'Indices',symbols:['^GSPC','^DJI','^IXIC','^RUT','^VIX']},
-  {label:'Global',symbols:['^FTSE','^GDAXI','^FCHI','^N225','^HSI']},
-  {label:'Commodities',symbols:['GC=F','SI=F','CL=F','NG=F']},
-  {label:'Crypto',symbols:['BTC-USD','ETH-USD','SOL-USD']},
-  {label:'Forex',symbols:['EURUSD=X','GBPUSD=X','JPY=X','DX-Y.NYB']},
-  {label:'Bonds',symbols:['^TNX','^TYX']},
+const DEFAULT_MGROUPS=[
+  {label:'US Indices',symbols:['^GSPC','^DJI','^IXIC','^RUT','^VIX']},
+  {label:'Europe',symbols:['^FTSE','^GDAXI','^FCHI','^STOXX50E','^IBEX','^AEX','^SSMI','^OMXS30']},
+  {label:'Asia-Pacific',symbols:['^N225','^HSI','^STI','000001.SS','^TWII','^KS11','^BSESN','^NSEI','^AXJO','^NZ50','^JKSE']},
+  {label:'Americas',symbols:['^GSPTSE','^BVSP','^MXX']},
+  {label:'Commodities',symbols:['GC=F','SI=F','CL=F','NG=F','HG=F','PL=F','ZW=F','ZC=F']},
+  {label:'Crypto',symbols:['BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','DOGE-USD','AVAX-USD']},
+  {label:'Forex',symbols:['EURUSD=X','GBPUSD=X','JPY=X','AUDUSD=X','CADUSD=X','CHFUSD=X','NZDUSD=X','DX-Y.NYB']},
+  {label:'Bonds',symbols:['^TNX','^TYX','^FVX','^IRX']},
 ];
-const MNAMES={'^GSPC':'S&P 500','^DJI':'Dow Jones','^IXIC':'NASDAQ','^RUT':'Russell 2000','^VIX':'VIX','^FTSE':'FTSE 100','^GDAXI':'DAX','^FCHI':'CAC 40','^N225':'Nikkei 225','^HSI':'Hang Seng','GC=F':'Gold','SI=F':'Silver','CL=F':'Crude Oil','NG=F':'Nat Gas','BTC-USD':'Bitcoin','ETH-USD':'Ethereum','SOL-USD':'Solana','EURUSD=X':'EUR/USD','GBPUSD=X':'GBP/USD','JPY=X':'USD/JPY','DX-Y.NYB':'Dollar Index','^TNX':'10Y Treasury','^TYX':'30Y Treasury'};
+const MNAMES={
+  '^GSPC':'S&P 500','^DJI':'Dow Jones','^IXIC':'NASDAQ','^RUT':'Russell 2000','^VIX':'VIX',
+  '^FTSE':'FTSE 100','^GDAXI':'DAX','^FCHI':'CAC 40','^STOXX50E':'Euro Stoxx 50','^IBEX':'IBEX 35','^AEX':'AEX','^SSMI':'SMI','^OMXS30':'OMX 30','^BVLG':'BEL 20',
+  '^N225':'Nikkei 225','^HSI':'Hang Seng','^STI':'Straits Times','000001.SS':'Shanghai','^TWII':'Taiwan','^KS11':'KOSPI','^BSESN':'BSE Sensex','^NSEI':'Nifty 50','^AXJO':'ASX 200','^NZ50':'NZX 50','^JKSE':'Jakarta',
+  '^GSPTSE':'TSX','^BVSP':'Bovespa','^MXX':'IPC Mexico',
+  '^TA125.TA':'TA-125',
+  'GC=F':'Gold','SI=F':'Silver','CL=F':'Crude Oil','NG=F':'Nat Gas','HG=F':'Copper','PL=F':'Platinum','ZW=F':'Wheat','ZC=F':'Corn',
+  'BTC-USD':'Bitcoin','ETH-USD':'Ethereum','SOL-USD':'Solana','BNB-USD':'BNB','XRP-USD':'XRP','ADA-USD':'Cardano','DOGE-USD':'Dogecoin','AVAX-USD':'Avalanche',
+  'EURUSD=X':'EUR/USD','GBPUSD=X':'GBP/USD','JPY=X':'USD/JPY','AUDUSD=X':'AUD/USD','CADUSD=X':'CAD/USD','CHFUSD=X':'CHF/USD','NZDUSD=X':'NZD/USD','DX-Y.NYB':'Dollar Index',
+  '^TNX':'10Y Treasury','^TYX':'30Y Treasury','^FVX':'5Y Treasury','^IRX':'13W T-Bill',
+};
+
+// ─── All available symbols the user can pick from ───
+const ALL_MARKET_SYMBOLS=[
+  {cat:'US Indices',items:['^GSPC','^DJI','^IXIC','^RUT','^VIX']},
+  {cat:'Europe',items:['^FTSE','^GDAXI','^FCHI','^STOXX50E','^IBEX','^AEX','^SSMI','^OMXS30','^BVLG']},
+  {cat:'Asia-Pacific',items:['^N225','^HSI','^STI','000001.SS','^TWII','^KS11','^BSESN','^NSEI','^AXJO','^NZ50','^JKSE']},
+  {cat:'Americas',items:['^GSPTSE','^BVSP','^MXX']},
+  {cat:'Middle East / Africa',items:['^TA125.TA']},
+  {cat:'Commodities',items:['GC=F','SI=F','CL=F','NG=F','HG=F','PL=F','ZW=F','ZC=F']},
+  {cat:'Crypto',items:['BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','DOGE-USD','AVAX-USD']},
+  {cat:'Forex',items:['EURUSD=X','GBPUSD=X','JPY=X','AUDUSD=X','CADUSD=X','CHFUSD=X','NZDUSD=X','DX-Y.NYB']},
+  {cat:'Bonds',items:['^TNX','^TYX','^FVX','^IRX']},
+];
+
+// ─── Edit Markets Modal ───
+const EditMarketsModal=({groups,onSave,onClose})=>{
+  useBodyScrollLock();
+  const [editGroups,setEditGroups]=useState(()=>JSON.parse(JSON.stringify(groups)));
+  const [addingTo,setAddingTo]=useState(null); // index of group we're adding symbols to
+  const [newGrpName,setNewGrpName]=useState('');
+  const [search,setSearch]=useState('');
+
+  const allUsed=new Set(editGroups.flatMap(g=>g.symbols));
+
+  const removeSymbol=(gi,sym)=>{
+    setEditGroups(prev=>{
+      const next=[...prev];
+      next[gi]={...next[gi],symbols:next[gi].symbols.filter(s=>s!==sym)};
+      return next;
+    });
+  };
+  const removeGroup=(gi)=>{
+    setEditGroups(prev=>prev.filter((_,i)=>i!==gi));
+  };
+  const addGroup=()=>{
+    const name=newGrpName.trim();
+    if(!name)return;
+    setEditGroups(prev=>[...prev,{label:name,symbols:[]}]);
+    setNewGrpName('');
+  };
+  const toggleSymbol=(sym)=>{
+    if(addingTo==null)return;
+    setEditGroups(prev=>{
+      const next=[...prev];
+      const g=next[addingTo];
+      if(g.symbols.includes(sym)){
+        next[addingTo]={...g,symbols:g.symbols.filter(s=>s!==sym)};
+      }else{
+        next[addingTo]={...g,symbols:[...g.symbols,sym]};
+      }
+      return next;
+    });
+  };
+  const moveGroup=(gi,dir)=>{
+    setEditGroups(prev=>{
+      const next=[...prev];
+      const ni=gi+dir;
+      if(ni<0||ni>=next.length)return prev;
+      [next[gi],next[ni]]=[next[ni],next[gi]];
+      return next;
+    });
+  };
+
+  const filteredCatalog=ALL_MARKET_SYMBOLS.map(cat=>({
+    ...cat,
+    items:cat.items.filter(s=>{
+      if(!search)return true;
+      const q=search.toLowerCase();
+      return s.toLowerCase().includes(q)||(MNAMES[s]||'').toLowerCase().includes(q);
+    })
+  })).filter(cat=>cat.items.length>0);
+
+  return(
+    <div className="mo" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="mc fi" style={{maxHeight:'90vh',maxHeight:'90dvh'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexShrink:0}}>
+          <h3 style={{fontSize:16,fontWeight:700}}>Edit Markets</h3>
+          <button onClick={onClose} style={{background:'none',color:'var(--t3)',fontSize:22,lineHeight:1,padding:4}}>✕</button>
+        </div>
+
+        {addingTo!=null?(
+          <div style={{flex:1,overflow:'auto',minHeight:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexShrink:0}}>
+              <button onClick={()=>{setAddingTo(null);setSearch('');}} className="bs" style={{padding:'6px 12px',fontSize:12}}>← Back</button>
+              <span style={{fontSize:13,fontWeight:600}}>Add to: {editGroups[addingTo]?.label}</span>
+            </div>
+            <input placeholder="Search symbols..." value={search} onChange={e=>setSearch(e.target.value)} style={{marginBottom:10,fontSize:13}}/>
+            {filteredCatalog.map(cat=>(
+              <div key={cat.cat} style={{marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--t3)',marginBottom:4,textTransform:'uppercase',letterSpacing:.5}}>{cat.cat}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                  {cat.items.map(sym=>{
+                    const inGroup=editGroups[addingTo]?.symbols.includes(sym);
+                    return(
+                      <button key={sym} onClick={()=>toggleSymbol(sym)} style={{
+                        padding:'4px 10px',borderRadius:12,fontSize:11,fontWeight:600,
+                        background:inGroup?'var(--acc)':'var(--hover)',
+                        color:inGroup?'#000':'var(--t2)',
+                        border:inGroup?'none':'1px solid var(--brd)',transition:'all .15s'
+                      }}>{MNAMES[sym]||sym}{inGroup?' ✓':''}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ):(
+          <div style={{flex:1,overflow:'auto',minHeight:0}}>
+            {editGroups.map((g,gi)=>(
+              <div key={gi} style={{background:'var(--hover)',borderRadius:10,padding:10,marginBottom:8}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                  <span style={{fontSize:13,fontWeight:700}}>{g.label}</span>
+                  <div style={{display:'flex',gap:4}}>
+                    <button onClick={()=>moveGroup(gi,-1)} style={{background:'none',color:'var(--t3)',fontSize:14,padding:'2px 6px'}} title="Move up">▲</button>
+                    <button onClick={()=>moveGroup(gi,1)} style={{background:'none',color:'var(--t3)',fontSize:14,padding:'2px 6px'}} title="Move down">▼</button>
+                    <button onClick={()=>setAddingTo(gi)} style={{background:'var(--accd)',color:'var(--acc)',fontSize:11,padding:'3px 8px',borderRadius:8,fontWeight:600}}>+ Add</button>
+                    <button onClick={()=>removeGroup(gi)} style={{background:'rgba(255,71,87,.12)',color:'var(--red)',fontSize:11,padding:'3px 8px',borderRadius:8,fontWeight:600}}>Delete</button>
+                  </div>
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                  {g.symbols.map(sym=>(
+                    <span key={sym} style={{
+                      display:'inline-flex',alignItems:'center',gap:4,
+                      padding:'3px 8px',borderRadius:10,fontSize:11,fontWeight:600,
+                      background:'var(--bg2)',color:'var(--t2)',border:'1px solid var(--brd)'
+                    }}>
+                      {MNAMES[sym]||sym}
+                      <button onClick={()=>removeSymbol(gi,sym)} style={{background:'none',color:'var(--red)',fontSize:13,lineHeight:1,padding:0}}>×</button>
+                    </span>
+                  ))}
+                  {g.symbols.length===0&&<span style={{fontSize:11,color:'var(--t3)',fontStyle:'italic'}}>No symbols — tap Add</span>}
+                </div>
+              </div>
+            ))}
+            <div style={{display:'flex',gap:6,marginTop:6}}>
+              <input placeholder="New group name..." value={newGrpName} onChange={e=>setNewGrpName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addGroup()} style={{flex:1,fontSize:13,padding:'8px 12px'}}/>
+              <button onClick={addGroup} className="bp" style={{padding:'8px 14px',fontSize:12,flexShrink:0}}>+ Group</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{display:'flex',gap:8,marginTop:12,flexShrink:0}}>
+          <button onClick={()=>{setEditGroups(JSON.parse(JSON.stringify(DEFAULT_MGROUPS)));}} className="bs" style={{flex:1}}>Reset Default</button>
+          <button onClick={()=>onSave(editGroups.filter(g=>g.symbols.length>0))} className="bp" style={{flex:1}}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const MarketOverview=({onStock})=>{
   const [indices,setIndices]=useState([]);
   const [grp,setGrp]=useState(0);
+  const [editing,setEditing]=useState(false);
+  const [mgroups,setMgroups]=useState(DEFAULT_MGROUPS);
+
+  // Load custom groups from server settings
+  useEffect(()=>{
+    api.get('/api/db/settings').then(s=>{
+      if(s.marketGroups&&Array.isArray(s.marketGroups)&&s.marketGroups.length>0){
+        setMgroups(s.marketGroups);
+      }
+    }).catch(()=>{});
+  },[]);
 
   useEffect(()=>{
-    const load=()=>api.get('/api/indices').then(setIndices).catch(()=>{});
+    const allSymbols=[...new Set(mgroups.flatMap(g=>g.symbols))];
+    const load=()=>api.get('/api/indices?symbols='+encodeURIComponent(allSymbols.join(','))).then(setIndices).catch(()=>{});
     load();
     const iv=setInterval(load,15000);
     return()=>clearInterval(iv);
-  },[]);
+  },[mgroups]);
 
-  const filtered=indices.filter(q=>MGROUPS[grp].symbols.includes(q.symbol));
+  const saveGroups=(newGroups)=>{
+    setMgroups(newGroups);
+    setEditing(false);
+    setGrp(0);
+    api.put('/api/db/settings',{key:'marketGroups',value:newGroups}).catch(()=>{});
+  };
+
+  const safeGrp=Math.min(grp,mgroups.length-1);
+  const filtered=mgroups.length>0?indices.filter(q=>mgroups[safeGrp].symbols.includes(q.symbol)):[];
 
   return(
     <div className="c">
       <h4 style={{fontSize:14,fontWeight:600,marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
         <I n="trend" s={16} c="var(--blu)"/> Markets
         <span className="live" style={{marginLeft:4}}/>
+        <button onClick={()=>setEditing(true)} style={{marginLeft:'auto',background:'none',color:'var(--t3)',fontSize:11,display:'flex',alignItems:'center',gap:3}} title="Customize markets">
+          <I n="settings" s={12} c="var(--t3)"/> Edit
+        </button>
       </h4>
       <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:10,paddingBottom:2}}>
-        {MGROUPS.map((g,i)=>(
-          <button key={g.label} onClick={()=>setGrp(i)} style={{
+        {mgroups.map((g,i)=>(
+          <button key={g.label+i} onClick={()=>setGrp(i)} style={{
             padding:'4px 10px',borderRadius:14,fontSize:10,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
-            background:grp===i?'var(--blu)':'var(--hover)',color:grp===i?'#fff':'var(--t3)',transition:'all .2s'
+            background:safeGrp===i?'var(--blu)':'var(--hover)',color:safeGrp===i?'#fff':'var(--t3)',transition:'all .2s'
           }}>{g.label}</button>
         ))}
       </div>
@@ -593,6 +777,7 @@ const MarketOverview=({onStock})=>{
           })}
         </div>
       }
+      {editing&&<EditMarketsModal groups={mgroups} onSave={saveGroups} onClose={()=>setEditing(false)}/>}
     </div>
   );
 };

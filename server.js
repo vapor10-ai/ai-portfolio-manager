@@ -411,6 +411,7 @@ app.get('/api/db/settings', (req, res) => {
       theme: DB.getSetting('theme', 'dark'),
       dataSource: DB.getSetting('dataSource', 'yahoo'),
       avKey: DB.getSetting('avKey', ''),
+      marketGroups: DB.getSetting('marketGroups', null),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -434,6 +435,7 @@ app.get('/api/db/state', (req, res) => {
       theme: DB.getSetting('theme', 'dark'),
       dataSource: DB.getSetting('dataSource', 'yahoo'),
       avKey: DB.getSetting('avKey', ''),
+      marketGroups: DB.getSetting('marketGroups', null),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -618,15 +620,30 @@ app.get('/api/news', async (req, res) => {
 // ─── Market Indices & Global Markets ───
 app.get('/api/indices', async (req, res) => {
   try {
-    const indices = [
-      '^GSPC','^DJI','^IXIC','^RUT','^VIX',          // US indices
-      '^TNX','^TYX',                                    // US Treasury yields
-      '^FTSE','^GDAXI','^FCHI','^N225','^HSI','^STI',  // Global indices
-      'GC=F','SI=F','CL=F','NG=F',                      // Commodities (Gold, Silver, Oil, NatGas)
-      'BTC-USD','ETH-USD','SOL-USD',                     // Crypto
-      'EURUSD=X','GBPUSD=X','JPY=X','DX-Y.NYB',        // Forex & Dollar index
+    // Accept custom symbols from query param, or use full default set
+    const custom = req.query.symbols ? req.query.symbols.split(',').map(s => s.trim()).filter(Boolean) : null;
+    const indices = custom || [
+      // US indices
+      '^GSPC','^DJI','^IXIC','^RUT','^VIX',
+      // US Treasury yields / Bonds
+      '^TNX','^TYX','^FVX','^IRX',
+      // Europe
+      '^FTSE','^GDAXI','^FCHI','^STOXX50E','^IBEX','^AEX','^SSMI','^OMXS30','^BVLG',
+      // Asia-Pacific
+      '^N225','^HSI','^STI','000001.SS','^TWII','^KS11','^BSESN','^NSEI','^AXJO','^NZ50','^JKSE',
+      // Americas (ex-US)
+      '^GSPTSE','^BVSP','^MXX',
+      // Middle East / Africa
+      '^TA125.TA',
+      // Commodities
+      'GC=F','SI=F','CL=F','NG=F','HG=F','PL=F','ZW=F','ZC=F',
+      // Crypto
+      'BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','DOGE-USD','AVAX-USD',
+      // Forex
+      'EURUSD=X','GBPUSD=X','JPY=X','AUDUSD=X','CADUSD=X','CHFUSD=X','NZDUSD=X','DX-Y.NYB',
     ];
-    const quotes = await cached('indices', 15000, () => yahoo.quotes(indices));
+    const cacheKey = custom ? `indices_custom_${indices.join(',')}` : 'indices';
+    const quotes = await cached(cacheKey, 15000, () => yahoo.quotes(indices));
     res.json(quotes.map(q => ({
       symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
       price: q.regularMarketPrice, change: q.regularMarketChange,
