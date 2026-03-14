@@ -48,6 +48,7 @@ button{cursor:pointer;border:none;font-family:inherit;font-size:14px;transition:
 .live{width:6px;height:6px;border-radius:50%;background:var(--grn);display:inline-block;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 canvas{max-width:100%}
+.hscroll{overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}.hscroll::-webkit-scrollbar{display:none}
 </style>
 </head>
 <body>
@@ -425,7 +426,7 @@ const StockDetailInner=({symbol,onClose})=>{
 
   return(
     <div className="mo" onClick={onClose}>
-      <div className="mc fi" onClick={e=>e.stopPropagation()} style={{maxHeight:'90vh'}}>
+      <div className="mc" onClick={e=>e.stopPropagation()} style={{maxHeight:'92vh',maxHeight:'92dvh'}}>
         {error ? <div style={{textAlign:'center',padding:40}}><I n="alert" s={32} c="var(--red)"/><p style={{color:'var(--red)',marginTop:8,fontSize:14,fontWeight:600}}>Failed to load {symbol}</p><p style={{color:'var(--t3)',fontSize:12,marginTop:4}}>{error}</p><button className="bs" onClick={()=>{setError(null);setLoadTimeout(false);api.get(`/api/quote/${symbol}`).then(q=>{if(!q||q.price==null){setError('No data available for '+symbol);return;}setQuote(q);}).catch(e=>setError(e.message));}} style={{marginTop:12}}>Retry</button><button className="bs" onClick={onClose} style={{marginTop:8,marginLeft:8}}>Close</button></div>
         : !quote ? <div style={{textAlign:'center',padding:40}}><div className="sp"/><p style={{color:'var(--t3)',fontSize:12,marginTop:12}}>Loading {symbol}...</p>{loadTimeout&&<><p style={{color:'var(--yel)',fontSize:12,marginTop:8}}>Taking longer than expected...</p><button className="bs" onClick={onClose} style={{marginTop:8}}>Close</button></>}</div> : <>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',marginBottom:4}}>
@@ -751,7 +752,7 @@ const MarketOverview=({onStock})=>{
           <I n="settings" s={12} c="var(--t3)"/> Edit
         </button>
       </h4>
-      <div style={{display:'flex',gap:4,overflowX:'auto',marginBottom:10,paddingBottom:2}}>
+      <div className="hscroll" style={{display:'flex',gap:4,marginBottom:10,paddingBottom:2}}>
         {mgroups.map((g,i)=>(
           <button key={g.label+i} onClick={()=>setGrp(i)} style={{
             padding:'4px 10px',borderRadius:14,fontSize:10,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,
@@ -940,14 +941,14 @@ const Dashboard=({pos,wl,budget,onNav,onStock})=>{
         </div>
       </div>
 
-      {/* Market Overview */}
-      <MarketOverview onStock={onStock}/>
-
       {/* Quick nav */}
       <div className="g2" style={{marginBottom:12}}>
         <button className="c" onClick={()=>onNav('portfolio')} style={{textAlign:'center',marginBottom:0,color:'var(--t1)'}}><I n="briefcase" s={22} c="var(--acc)"/><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{pos.length} Holdings</div></button>
         <button className="c" onClick={()=>onNav('watchlist')} style={{textAlign:'center',marginBottom:0,color:'var(--t1)'}}><I n="eye" s={22} c="var(--blu)"/><div style={{fontSize:13,fontWeight:600,marginTop:4}}>{wl.reduce((s,w)=>s+w.items.length,0)} Watching</div></button>
       </div>
+
+      {/* Market Overview */}
+      <MarketOverview onStock={onStock}/>
 
       {/* Sectors */}
       {pos.length>0&&<div className="c">
@@ -1218,7 +1219,7 @@ const WatchlistView=({wl,setWl,onStock})=>{
 
 // ─── AI Scanner ───
 const ScannerView=({pos})=>{
-  const [scan,setScan]=useState(null);
+  const [scan,setScan]=useState(()=>S.g('lastScan',null));
   const [loading,setLoading]=useState(false);
   const [tab,setTab]=useState('scan');
   const [screener,setScreener]=useState([]);
@@ -1231,7 +1232,8 @@ const ScannerView=({pos})=>{
     try{
       const portfolio=pos.map(p=>({ticker:p.ticker,shares:p.shares,value:p.price*p.shares}));
       const data=await api.post('/api/scan',{portfolio});
-      setScan(data);
+      data._ts=Date.now();
+      setScan(data);S.s('lastScan',data);
     }catch(e){setScan({error:e.message});}
     setLoading(false);
   };
@@ -1267,6 +1269,7 @@ const ScannerView=({pos})=>{
         </div>
 
         {scan&&!scan.error&&<>
+          {scan._ts&&<p style={{fontSize:10,color:'var(--t3)',textAlign:'right',marginBottom:4}}>Last scan: {new Date(scan._ts).toLocaleString()}</p>}
           <div className="c">
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
               <h4 style={{fontSize:14,fontWeight:600}}>Market Sentiment</h4>
@@ -1492,7 +1495,11 @@ const App=()=>{
         S.s('budget',state.budget||{total:0,maxPerStock:20,maxPerSector:40});
         S.s('theme',state.theme||'dark');
         if(state.dataSource)S.s('dataSource',state.dataSource);
-        if(state.avKey)S.s('avKey',state.avKey);
+        if(state.avKey){S.s('avKey',state.avKey);}else{
+          // Push local avKey to server if server doesn't have it
+          const localAvKey=S.g('avKey','');
+          if(localAvKey)syncToServer('avKey',localAvKey);
+        }
         setSyncStatus('loaded');
       } else {
         // DB is empty — push local data to server (first-time migration)
@@ -1578,6 +1585,9 @@ const App=()=>{
     {id:'settings',icon:'settings',label:'More'},
   ];
 
+  // Scroll to top on tab change
+  const handleTabChange=(id)=>{setTab(id);window.scrollTo(0,0);};
+
   return(
     <div style={{paddingBottom:'calc(var(--nav) + var(--sab) + 20px)'}}>
       {/* Header */}
@@ -1602,7 +1612,7 @@ const App=()=>{
 
       {/* Content */}
       <div style={{padding:16,maxWidth:600,margin:'0 auto'}}>
-        {tab==='home'&&<Dashboard pos={pos} wl={wl} budget={budget} onNav={setTab} onStock={setSelectedStock}/>}
+        {tab==='home'&&<Dashboard pos={pos} wl={wl} budget={budget} onNav={handleTabChange} onStock={setSelectedStock}/>}
         {tab==='portfolio'&&<PortfolioView pos={pos} setPos={setPos} onStock={setSelectedStock}/>}
         {tab==='watchlist'&&<WatchlistView wl={wl} setWl={setWl} onStock={setSelectedStock}/>}
         {tab==='scanner'&&<ScannerView pos={pos}/>}
@@ -1613,7 +1623,7 @@ const App=()=>{
       {/* Bottom Nav */}
       <nav style={{position:'fixed',bottom:0,left:0,right:0,background:'var(--bg2)',borderTop:'1px solid var(--brd)',display:'flex',justifyContent:'space-around',alignItems:'flex-start',zIndex:100,paddingTop:8,paddingBottom:'calc(var(--sab) + 10px)',height:'calc(var(--nav) + var(--sab) + 4px)'}}>
         {tabs.map(t=>
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{background:'none',color:tab===t.id?'var(--acc)':'var(--t3)',display:'flex',flexDirection:'column',alignItems:'center',gap:1,padding:'4px 8px'}}>
+          <button key={t.id} onClick={()=>handleTabChange(t.id)} style={{background:'none',color:tab===t.id?'var(--acc)':'var(--t3)',display:'flex',flexDirection:'column',alignItems:'center',gap:1,padding:'4px 8px'}}>
             <I n={t.icon} s={20} c={tab===t.id?'var(--acc)':'var(--t3)'}/>
             <span style={{fontSize:9,fontWeight:tab===t.id?600:400}}>{t.label}</span>
           </button>
